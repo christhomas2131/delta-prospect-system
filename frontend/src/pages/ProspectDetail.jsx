@@ -74,10 +74,14 @@ export default function ProspectDetail() {
   const [deepResult, setDeepResult] = useState(null)
   const [isWatchlisted, setIsWatchlisted] = useState(false)
 
+  const [error, setError] = useState(null)
+
   const load = async () => {
     setLoading(true)
+    setError(null)
     try {
       const r = await fetch(`/api/prospects/${id}`)
+      if (!r.ok) throw new Error(r.status === 404 ? 'not_found' : 'api_error')
       const d = await r.json()
       setProspect(d.prospect)
       setSignals(d.signals || [])
@@ -85,7 +89,10 @@ export default function ProspectDetail() {
       setDeepAvailable(d.deep_analysis_available || false)
       setLastDeepAt(d.last_deep_analysis_at || null)
       setIsWatchlisted(!!d.prospect.is_watchlisted)
-    } catch { setProspect(null) }
+    } catch (e) {
+      if (e.message === 'not_found') setProspect(null)
+      else setError('Cannot reach the API — is the backend running?')
+    }
     setLoading(false)
   }
 
@@ -163,8 +170,39 @@ export default function ProspectDetail() {
     s => s.model_version === 'claude-deep-v1' || s.validated_by === 'claude-deep-v1'
   )
 
+  const copyBrief = () => {
+    if (!prospect) return
+    const topSignals = signals
+      .filter(s => s.strength === 'strong')
+      .slice(0, 3)
+      .map(s => `  • ${s.pressure_type}: ${s.summary}`)
+      .join('\n')
+
+    const brief = [
+      `${prospect.ticker} — ${prospect.company_name}`,
+      `${prospect.gics_sector} | Score: ${prospect.prospect_score ? Number(prospect.prospect_score).toFixed(1) : 'N/A'} | Likelihood: ${prospect.likelihood_score || 'N/A'}/10`,
+      prospect.primary_headwind ? `Headwind: ${prospect.primary_headwind}` : null,
+      topSignals ? `Key signals:\n${topSignals}` : null,
+    ].filter(Boolean).join('\n')
+
+    navigator.clipboard.writeText(brief)
+    showToast(true, 'Brief copied to clipboard')
+  }
+
   if (loading) return (
-    <div className="p-6 font-mono text-xs" style={{ color: '#4a5a70' }}>Loading...</div>
+    <div className="p-6 font-mono text-xs" style={{ color: '#4a5a70' }}>Loading prospect...</div>
+  )
+  if (error) return (
+    <div className="p-6">
+      <div className="card p-6 text-center" style={{ borderLeft: '3px solid #ef4444' }}>
+        <div className="font-mono text-sm mb-2" style={{ color: '#ef4444' }}>⚠ Connection Error</div>
+        <div className="text-sm mb-4" style={{ color: '#8fa3bf' }}>{error}</div>
+        <button onClick={load} className="font-mono text-xs px-4 py-2"
+          style={{ background: '#1e6fd4', color: '#fff', border: 'none', cursor: 'pointer' }}>
+          Retry
+        </button>
+      </div>
+    </div>
   )
   if (!prospect) return (
     <div className="p-6 font-mono text-xs" style={{ color: '#ef4444' }}>Prospect not found.</div>
@@ -229,6 +267,14 @@ export default function ProspectDetail() {
             {hasAISignals && (
               <div className="font-mono text-xs mt-1" style={{ color: GOLD }}>◆ AI Enhanced</div>
             )}
+            <button onClick={copyBrief}
+              className="font-mono text-xs px-3 py-1.5 mt-2"
+              style={{ background: 'none', border: '1px solid #1e2530', color: '#8fa3bf', cursor: 'pointer' }}
+              onMouseEnter={e => { e.currentTarget.style.borderColor = '#2d3a4d'; e.currentTarget.style.color = '#e2e8f0' }}
+              onMouseLeave={e => { e.currentTarget.style.borderColor = '#1e2530'; e.currentTarget.style.color = '#8fa3bf' }}
+            >
+              ⧉ Copy Brief
+            </button>
           </div>
         </div>
       </div>

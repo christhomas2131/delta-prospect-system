@@ -73,6 +73,7 @@ export default function ProspectMatrix({ watchlistOnly = false }) {
   const [data, setData] = useState([])
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
 
   // Per-row watchlist state (for optimistic updates)
   const [watchlisted, setWatchlisted] = useState({})
@@ -107,6 +108,7 @@ export default function ProspectMatrix({ watchlistOnly = false }) {
 
   const load = useCallback(async () => {
     setLoading(true)
+    setError(null)
     const p = new URLSearchParams({ limit: PAGE_SIZE, offset: page * PAGE_SIZE, sort_by: sort, sort_dir: dir })
     if (search) p.set('search', search)
     if (status) p.set('status', status)
@@ -116,10 +118,14 @@ export default function ProspectMatrix({ watchlistOnly = false }) {
     if (wlFilter || watchlistOnly) p.set('watchlist', 'true')
     try {
       const r = await fetch(`/api/prospects?${p}`)
+      if (!r.ok) throw new Error()
       const d = await r.json()
       setData(d.data || [])
       setTotal(d.total || 0)
-    } catch { setData([]) }
+    } catch {
+      setData([])
+      setError('Cannot reach the API — is the backend running?')
+    }
     setLoading(false)
   }, [search, status, sector, minScore, minStrong, wlFilter, watchlistOnly, sort, dir, page])
 
@@ -284,6 +290,13 @@ export default function ProspectMatrix({ watchlistOnly = false }) {
           <Chip key={c.id} label={c.label} count={c.count} active={c.active} onClick={c.toggle} />
         ))}
       </div>
+
+      {/* Error banner */}
+      {error && (
+        <div className="mb-4 px-4 py-2 text-sm font-mono" style={{ background: '#1f0808', border: '1px solid #7f1d1d', color: '#ef4444' }}>
+          ⚠ {error}
+        </div>
+      )}
 
       {/* Table */}
       <div className="card">

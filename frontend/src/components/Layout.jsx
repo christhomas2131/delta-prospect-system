@@ -1,4 +1,4 @@
-import { NavLink } from 'react-router-dom'
+import { NavLink, useLocation } from 'react-router-dom'
 import { useEffect, useState } from 'react'
 
 const NAV = [
@@ -10,6 +10,8 @@ const NAV = [
 
 export default function Layout({ children }) {
   const [aiActive, setAiActive] = useState(false)
+  const [sidebarOpen, setSidebarOpen] = useState(false)
+  const location = useLocation()
 
   useEffect(() => {
     fetch('/api/settings/api-key/status')
@@ -18,10 +20,45 @@ export default function Layout({ children }) {
       .catch(() => {})
   }, [])
 
+  // Close sidebar on navigation (mobile)
+  useEffect(() => {
+    setSidebarOpen(false)
+  }, [location.pathname])
+
   return (
     <div className="flex min-h-screen" style={{ background: '#0a0c0f' }}>
+      {/* Mobile header bar */}
+      <div className="md:hidden fixed top-0 left-0 right-0 z-30 flex items-center justify-between px-4 py-3"
+        style={{ background: '#0d1017', borderBottom: '1px solid #1e2530' }}>
+        <div className="font-mono text-xs font-semibold tracking-widest uppercase" style={{ color: '#1e6fd4' }}>
+          DELTA
+        </div>
+        <button
+          onClick={() => setSidebarOpen(!sidebarOpen)}
+          style={{ background: 'none', border: 'none', color: '#8fa3bf', cursor: 'pointer', fontSize: 20, padding: '0 4px' }}
+        >
+          {sidebarOpen ? '✕' : '☰'}
+        </button>
+      </div>
+
+      {/* Sidebar overlay (mobile) */}
+      {sidebarOpen && (
+        <div
+          className="md:hidden fixed inset-0 z-40"
+          style={{ background: 'rgba(0,0,0,0.6)' }}
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
       {/* Sidebar */}
-      <aside className="w-52 flex-shrink-0 flex flex-col" style={{ background: '#0d1017', borderRight: '1px solid #1e2530' }}>
+      <aside
+        className={`
+          fixed md:static z-50 top-0 left-0 h-full w-52 flex-shrink-0 flex flex-col
+          transition-transform duration-200
+          ${sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
+        `}
+        style={{ background: '#0d1017', borderRight: '1px solid #1e2530' }}
+      >
         {/* Logo */}
         <div className="px-4 py-5" style={{ borderBottom: '1px solid #1e2530' }}>
           <div className="font-mono text-xs font-semibold tracking-widest uppercase" style={{ color: '#1e6fd4' }}>
@@ -80,7 +117,7 @@ export default function Layout({ children }) {
       </aside>
 
       {/* Main */}
-      <main className="flex-1 overflow-auto">
+      <main className="flex-1 overflow-auto pt-12 md:pt-0">
         {children}
       </main>
     </div>

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 function StatCard({ label, value, sub, color }) {
@@ -15,12 +15,35 @@ export default function Dashboard() {
   const [stats, setStats] = useState(null)
   const [sectors, setSectors] = useState([])
   const [refreshing, setRefreshing] = useState(false)
+  const [enriching, setEnriching] = useState(false)
   const [toast, setToast] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
   const navigate = useNavigate()
+  const intervalRef = useRef(null)
+
+  const loadData = async (silent = false) => {
+    if (!silent) setLoading(true)
+    setError(null)
+    try {
+      const [statsRes, sectorsRes] = await Promise.all([
+        fetch('/api/stats'),
+        fetch('/api/sectors'),
+      ])
+      if (!statsRes.ok || !sectorsRes.ok) throw new Error('API returned an error')
+      setStats(await statsRes.json())
+      setSectors(await sectorsRes.json())
+    } catch {
+      setError('Cannot reach the API — is the backend running?')
+    }
+    setLoading(false)
+  }
 
   useEffect(() => {
-    fetch('/api/stats').then(r => r.json()).then(setStats)
-    fetch('/api/sectors').then(r => r.json()).then(setSectors)
+    loadData()
+    // Auto-refresh every 60 seconds
+    intervalRef.current = setInterval(() => loadData(true), 60000)
+    return () => clearInterval(intervalRef.current)
   }, [])
 
   const handleRefresh = async () => {
@@ -36,10 +59,48 @@ export default function Dashboard() {
     setTimeout(() => setToast(null), 4000)
   }
 
+  const handleBatchEnrich = async () => {
+    setEnriching(true)
+    try {
+      const r = await fetch('/api/enrich/batch', { method: 'POST' })
+      const d = await r.json()
+      setToast({ ok: true, msg: d.message || 'Batch enrichment started' })
+    } catch {
+      setToast({ ok: false, msg: 'Batch enrichment failed — check API' })
+    }
+    setEnriching(false)
+    setTimeout(() => setToast(null), 5000)
+  }
+
+  // Error state
+  if (error && !stats) {
+    return (
+      <div className="p-6">
+        <div className="card p-6 text-center" style={{ borderLeft: '3px solid #ef4444' }}>
+          <div className="font-mono text-sm mb-2" style={{ color: '#ef4444' }}>⚠ Connection Error</div>
+          <div className="text-sm mb-4" style={{ color: '#8fa3bf' }}>{error}</div>
+          <button onClick={() => loadData()} className="font-mono text-xs px-4 py-2"
+            style={{ background: '#1e6fd4', color: '#fff', border: 'none', cursor: 'pointer' }}>
+            Retry
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  // Loading state
+  if (loading && !stats) {
+    return (
+      <div className="p-6">
+        <div className="font-mono text-xs" style={{ color: '#4a5a70' }}>Loading dashboard...</div>
+      </div>
+    )
+  }
+
   return (
     <div className="p-6">
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
         <div>
           <div className="font-mono text-xs tracking-widest uppercase mb-1" style={{ color: '#4a5a70' }}>
             DELTA PROSPECT SYSTEM
@@ -48,12 +109,26 @@ export default function Dashboard() {
             Intelligence Dashboard
           </h1>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-wrap">
           {stats?.last_refresh && (
             <span className="font-mono text-xs" style={{ color: '#4a5a70' }}>
               Last refresh: {new Date(stats.last_refresh).toLocaleDateString()}
             </span>
           )}
+          <button
+            onClick={handleBatchEnrich}
+            disabled={enriching}
+            className="font-mono text-xs px-4 py-2 transition-all"
+            style={{
+              background: enriching ? '#1e2530' : '#14532d',
+              color: enriching ? '#4a5a70' : '#22c55e',
+              border: '1px solid',
+              borderColor: enriching ? '#1e2530' : '#166534',
+              cursor: enriching ? 'not-allowed' : 'pointer',
+            }}
+          >
+            {enriching ? 'ENRICHING...' : '⚡ ENRICH ALL'}
+          </button>
           <button
             onClick={handleRefresh}
             disabled={refreshing}
@@ -74,6 +149,14 @@ export default function Dashboard() {
       {toast && (
         <div className="mb-4 px-4 py-2 text-sm font-mono" style={{ background: toast.ok ? '#052e16' : '#1f0808', border: `1px solid ${toast.ok ? '#14532d' : '#7f1d1d'}`, color: toast.ok ? '#22c55e' : '#ef4444' }}>
           {toast.msg}
+        </div>
+      )}
+
+      {/* Connection warning (shown when background poll fails but we have stale data) */}
+      {error && stats && (
+        <div className="mb-4 px-4 py-2 text-xs font-mono" style={{ background: '#1f0808', border: '1px solid #7f1d1d', color: '#ef4444' }}>
+          ⚠ API unreachable — showing last loaded data.{' '}
+          <button onClick={() => loadData()} style={{ textDecoration: 'underline', background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer' }}>Retry</button>
         </div>
       )}
 
@@ -119,30 +202,32 @@ export default function Dashboard() {
             View Matrix →
           </button>
         </div>
-        <table className="w-full">
-          <thead>
-            <tr style={{ borderBottom: '1px solid #1e2530' }}>
-              {['Sector', 'Industry', 'Companies', 'In Matrix', 'Enriched', 'Avg Score'].map(h => (
-                <th key={h} className="px-4 py-2 text-left font-mono text-xs uppercase" style={{ color: '#4a5a70' }}>{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {sectors.map((s, i) => (
-              <tr key={i} className="table-row-hover" style={{ borderBottom: '1px solid #1e2530' }}
-                onClick={() => navigate(`/prospects?sector=${encodeURIComponent(s.gics_sector)}`)}>
-                <td className="px-4 py-2.5 font-mono text-xs font-semibold" style={{ color: '#e2e8f0' }}>{s.gics_sector}</td>
-                <td className="px-4 py-2.5 text-xs" style={{ color: '#8fa3bf' }}>{s.gics_industry_group}</td>
-                <td className="px-4 py-2.5 font-mono text-xs" style={{ color: '#e2e8f0' }}>{s.total_companies}</td>
-                <td className="px-4 py-2.5 font-mono text-xs" style={{ color: '#8fa3bf' }}>{s.in_matrix}</td>
-                <td className="px-4 py-2.5 font-mono text-xs" style={{ color: '#14b8a6' }}>{s.enriched}</td>
-                <td className="px-4 py-2.5 font-mono text-xs" style={{ color: s.avg_score ? '#22c55e' : '#4a5a70' }}>
-                  {s.avg_score ? Number(s.avg_score).toFixed(1) : '—'}
-                </td>
+        <div style={{ overflowX: 'auto' }}>
+          <table className="w-full" style={{ minWidth: 600 }}>
+            <thead>
+              <tr style={{ borderBottom: '1px solid #1e2530' }}>
+                {['Sector', 'Industry', 'Companies', 'In Matrix', 'Enriched', 'Avg Score'].map(h => (
+                  <th key={h} className="px-4 py-2 text-left font-mono text-xs uppercase" style={{ color: '#4a5a70' }}>{h}</th>
+                ))}
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {sectors.map((s, i) => (
+                <tr key={i} className="table-row-hover" style={{ borderBottom: '1px solid #1e2530' }}
+                  onClick={() => navigate(`/prospects?sector=${encodeURIComponent(s.gics_sector)}`)}>
+                  <td className="px-4 py-2.5 font-mono text-xs font-semibold" style={{ color: '#e2e8f0' }}>{s.gics_sector}</td>
+                  <td className="px-4 py-2.5 text-xs" style={{ color: '#8fa3bf' }}>{s.gics_industry_group}</td>
+                  <td className="px-4 py-2.5 font-mono text-xs" style={{ color: '#e2e8f0' }}>{s.total_companies}</td>
+                  <td className="px-4 py-2.5 font-mono text-xs" style={{ color: '#8fa3bf' }}>{s.in_matrix}</td>
+                  <td className="px-4 py-2.5 font-mono text-xs" style={{ color: '#14b8a6' }}>{s.enriched}</td>
+                  <td className="px-4 py-2.5 font-mono text-xs" style={{ color: s.avg_score ? '#22c55e' : '#4a5a70' }}>
+                    {s.avg_score ? Number(s.avg_score).toFixed(1) : '—'}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   )

@@ -19,18 +19,21 @@ Usage:
 """
 
 import os
+import sys
 import logging
 import time
 from datetime import datetime, timezone
 from typing import Optional
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 import csv
 import io
 
-from fastapi import FastAPI, HTTPException, Query, BackgroundTasks
+from fastapi import FastAPI, HTTPException, Query, BackgroundTasks, Request, Depends
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 import psycopg2
 from psycopg2.extras import RealDictCursor
@@ -54,6 +57,16 @@ DB_CONFIG = {
     "password": os.getenv("DB_PASSWORD", "delta_dev"),
 }
 
+# Auth (optional — set both to enable)
+AUTH_USER = os.getenv("AUTH_USER")
+AUTH_PASSWORD = os.getenv("AUTH_PASSWORD")
+
+# CORS (comma-separated origins, or * for dev)
+ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "*").split(",")
+
+# Static files (built frontend)
+FRONTEND_DIST = Path(__file__).parent / "frontend" / "dist"
+
 # ---------------------------------------------------------------------------
 # Logging
 # ---------------------------------------------------------------------------
@@ -70,12 +83,42 @@ db_pool = None
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global db_pool
-    db_pool = pool.ThreadedConnectionPool(
-        minconn=2,
-        maxconn=10,
-        **DB_CONFIG,
-    )
-    logger.info("Database pool initialized")
+    # Startup validation — fail fast with clear messages
+    try:
+        db_pool = pool.ThreadedConnectionPool(
+            minconn=2,
+            maxconn=10,
+            **DB_CONFIG,
+        )
+    except psycopg2.OperationalError as e:
+        logger.error(
+            "Cannot connect to database at %s:%s/%s as user '%s'. "
+            "Check DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD in your .env file. "
+            "Error: %s",
+            DB_CONFIG["host"], DB_CONFIG["port"], DB_CONFIG["dbname"],
+            DB_CONFIG["user"], e,
+        )
+        sys.exit(1)
+
+    # Verify tables exist
+    conn = db_pool.getconn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT COUNT(*) FROM information_schema.tables "
+                "WHERE table_name IN ('asx_listings', 'prospect_matrix', 'pressure_signals')"
+            )
+            count = cur.fetchone()[0]
+            if count < 3:
+                logger.error(
+                    "Database tables missing (%d/3 found). Run schema.sql first: "
+                    "psql -U delta -d delta_prospect -f schema.sql", count,
+                )
+                sys.exit(1)
+    finally:
+        db_pool.putconn(conn)
+
+    logger.info("Database pool initialized — connection verified")
     yield
     if db_pool:
         db_pool.closeall()
@@ -101,11 +144,60 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Lock down in production
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# ---------------------------------------------------------------------------
+# Basic Auth (optional — only active when AUTH_USER + AUTH_PASSWORD are set)
+# ---------------------------------------------------------------------------
+
+import base64
+import secrets
+
+def check_auth(request: Request):
+    """Verify Basic Auth if AUTH_USER and AUTH_PASSWORD are configured."""
+    if not AUTH_USER or not AUTH_PASSWORD:
+        return  # Auth not configured — allow all
+    if request.url.path == "/api/health":
+        return  # Health check is always public
+
+    auth_header = request.headers.get("authorization", "")
+    if auth_header.startswith("Basic "):
+        try:
+            decoded = base64.b64decode(auth_header[6:]).decode()
+            user, pw = decoded.split(":", 1)
+            if secrets.compare_digest(user, AUTH_USER) and secrets.compare_digest(pw, AUTH_PASSWORD):
+                return
+        except Exception:
+            pass
+
+    raise HTTPException(
+        status_code=401,
+        detail="Authentication required",
+        headers={"WWW-Authenticate": "Basic realm=\"Delta Prospect System\""},
+    )
+
+if AUTH_USER and AUTH_PASSWORD:
+    @app.middleware("http")
+    async def auth_middleware(request: Request, call_next):
+        if request.url.path == "/api/health":
+            return await call_next(request)
+        try:
+            check_auth(request)
+        except HTTPException as exc:
+            return JSONResponse(
+                status_code=exc.status_code,
+                content={"detail": exc.detail},
+                headers=exc.headers,
+            )
+        return await call_next(request)
+    logger.info("Basic auth enabled (AUTH_USER=%s)", AUTH_USER)
+else:
+    logger.info("Basic auth disabled — set AUTH_USER + AUTH_PASSWORD to enable")
 
 # ---------------------------------------------------------------------------
 # Pydantic Models
@@ -784,9 +876,32 @@ def trigger_refresh(req: RefreshRequest, background_tasks: BackgroundTasks):
 def trigger_enrichment(ticker: str, background_tasks: BackgroundTasks):
     """Trigger enrichment for a single company (runs in background)."""
     from enrichment_agent import run_single
-    
+
     background_tasks.add_task(run_single, ticker.upper())
     return {"message": f"Enrichment started for {ticker.upper()}"}
+
+
+@app.post("/api/enrich/batch")
+def trigger_batch_enrichment(background_tasks: BackgroundTasks):
+    """Trigger batch enrichment for all unscreened/qualified prospects (runs in background)."""
+    from enrichment_agent import run_batch
+
+    # Count how many will be processed
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT COUNT(*) FROM prospect_matrix WHERE status IN ('unscreened', 'qualified')"
+            )
+            count = cur.fetchone()[0]
+    finally:
+        put_conn(conn)
+
+    if count == 0:
+        return {"message": "No unscreened or qualified prospects to enrich", "count": 0}
+
+    background_tasks.add_task(run_batch)
+    return {"message": f"Batch enrichment started for {count} prospects", "count": count}
 
 
 @app.get("/api/refresh/history")
@@ -861,3 +976,21 @@ def health_check():
         return {"status": "unhealthy", "error": str(e)}
     finally:
         put_conn(conn)
+
+
+# ---------------------------------------------------------------------------
+# Static File Serving (built React frontend)
+# ---------------------------------------------------------------------------
+# After `npm run build` in frontend/, mount the dist/ folder so FastAPI
+# serves the SPA. In dev, Vite proxies /api to here instead.
+
+if FRONTEND_DIST.is_dir():
+    app.mount("/assets", StaticFiles(directory=FRONTEND_DIST / "assets"), name="static-assets")
+
+    @app.get("/{full_path:path}")
+    def serve_spa(full_path: str):
+        """Serve the React SPA — all non-API routes fall through here."""
+        file_path = FRONTEND_DIST / full_path
+        if file_path.is_file():
+            return FileResponse(file_path)
+        return FileResponse(FRONTEND_DIST / "index.html")
