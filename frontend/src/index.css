@@ -1,0 +1,32 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* { box-sizing: border-box; }
+
+body {
+  background-color: #0a0c0f;
+  color: #e2e8f0;
+  font-family: Inter, system-ui, sans-serif;
+  margin: 0;
+  -webkit-font-smoothing: antialiased;
+}
+
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: #0a0c0f; }
+::-webkit-scrollbar-thumb { background: #1e2530; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #2d3a4d; }
+
+.font-mono { font-family: 'JetBrains Mono', Consolas, monospace; }
+.card { background: #111418; border: 1px solid #1e2530; }
+.table-row-hover:hover { background: #161b24; cursor: pointer; }
+
+input, select, textarea {
+  background: #111418;
+  border: 1px solid #1e2530;
+  color: #e2e8f0;
+  outline: none;
+}
+input:focus, select:focus, textarea:focus { border-color: #1e6fd4; }
