@@ -474,8 +474,8 @@ export default function DeepIntelligence() {
         )
         loadProspect()
       }
-    } catch {
-      showToast(false, 'Request failed')
+    } catch (err) {
+      showToast(false, `Request failed: ${err.message || 'network error'}`)
     }
     setDeepAnalysing(false)
   }

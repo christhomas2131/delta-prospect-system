@@ -27,6 +27,9 @@ from typing import Optional
 from contextlib import asynccontextmanager
 from pathlib import Path
 
+from dotenv import load_dotenv
+load_dotenv()
+
 import csv
 import io
 
@@ -827,7 +830,7 @@ def deep_analysis(prospect_id: str):
 
             # Recalculate score
             cur.execute("SELECT calculate_prospect_score(%s)", (prospect_id,))
-            new_score = cur.fetchone()[0]
+            new_score = cur.fetchone()["calculate_prospect_score"]
 
             # Audit log
             tokens_used = result.get("tokens_used", 0)
@@ -856,6 +859,11 @@ def deep_analysis(prospect_id: str):
             "profile": profile,
             "validated_signals": validated,
         }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Deep analysis failed for %s", prospect_id)
+        raise HTTPException(status_code=500, detail=f"Deep analysis error: {e}")
     finally:
         put_conn(conn)
 
