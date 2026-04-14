@@ -16,6 +16,7 @@ export default function Dashboard() {
   const [sectors, setSectors] = useState([])
   const [refreshing, setRefreshing] = useState(false)
   const [refreshProgress, setRefreshProgress] = useState(null)
+  const [lastRefresh, setLastRefresh] = useState(null)
   const [enriching, setEnriching] = useState(false)
   const [enrichProgress, setEnrichProgress] = useState(null)
   const [toast, setToast] = useState(null)
@@ -43,6 +44,12 @@ export default function Dashboard() {
     setLoading(false)
   }
 
+  const loadLastRefresh = () => {
+    fetch('/api/refresh/latest').then(r => r.json()).then(d => {
+      if (d && d.started_at) setLastRefresh(d)
+    }).catch(() => {})
+  }
+
   const startRefreshPolling = () => {
     if (refreshPollRef.current) return
     refreshPollRef.current = setInterval(async () => {
@@ -62,6 +69,7 @@ export default function Dashboard() {
           setRefreshProgress(null)
           setTimeout(() => setToast(null), 10000)
           loadData(true)
+          loadLastRefresh()
         }
       } catch { /* ignore */ }
     }, 2000)
@@ -89,6 +97,7 @@ export default function Dashboard() {
 
   useEffect(() => {
     loadData()
+    loadLastRefresh()
     // Check if enrichment is already running
     fetch('/api/enrich/status').then(r => r.json()).then(d => {
       if (d.running) { setEnriching(true); setEnrichProgress(d); startEnrichPolling() }
@@ -174,9 +183,9 @@ export default function Dashboard() {
           </h1>
         </div>
         <div className="flex items-center gap-3 flex-wrap">
-          {stats?.last_refresh && (
-            <span className="font-mono text-xs" style={{ color: '#4a5a70' }}>
-              Last refresh: {new Date(stats.last_refresh).toLocaleDateString()}
+          {lastRefresh && (
+            <span className="font-mono text-xs" style={{ color: lastRefresh.status === 'failed' ? '#ef4444' : '#4a5a70' }}>
+              Last refresh: {new Date(lastRefresh.started_at).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
             </span>
           )}
           <button
@@ -278,6 +287,28 @@ export default function Dashboard() {
           <div className="text-xs mt-1" style={{ color: '#4a5a70' }}>starred companies</div>
         </div>
       </div>
+
+      {/* Last Refresh Result */}
+      {lastRefresh && (
+        <div className="mb-6 card px-4 py-3" style={{
+          borderLeft: `3px solid ${lastRefresh.status === 'failed' ? '#ef4444' : '#3b82f6'}`,
+        }}>
+          <div className="font-mono text-xs uppercase tracking-widest mb-1" style={{ color: '#4a5a70' }}>
+            Last ASX Refresh
+          </div>
+          {lastRefresh.status === 'failed' ? (
+            <div className="text-sm" style={{ color: '#ef4444' }}>
+              Failed — {lastRefresh.error_message || 'Unknown error'}
+            </div>
+          ) : (
+            <div className="text-sm" style={{ color: '#8fa3bf' }}>
+              {lastRefresh.total_listings?.toLocaleString() || '?'} listings found, {lastRefresh.target_sector_count?.toLocaleString() || '?'} target sector
+              {lastRefresh.new_listings > 0 && <span style={{ color: '#22c55e' }}> — {lastRefresh.new_listings} new added</span>}
+              {lastRefresh.delisted_count > 0 && <span style={{ color: '#eab308' }}> — {lastRefresh.delisted_count} removed</span>}
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8">
         <StatCard label="ASX Listings" value={stats?.total_listings?.toLocaleString()} color="#8fa3bf" />

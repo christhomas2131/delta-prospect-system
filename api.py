@@ -972,13 +972,29 @@ def get_dashboard_stats():
 # ---------------------------------------------------------------------------
 
 def _run_refresh_with_progress(triggered_by: str):
-    """Wrapper around ASX refresh that tracks progress."""
+    """Wrapper around ASX refresh that tracks progress and logs to refresh_runs."""
     _refresh_progress["running"] = True
     _refresh_progress["phase"] = "Fetching ASX CSV..."
     _refresh_progress["detail"] = ""
+    run_id = None
+
     try:
-        from asx_scraper import fetch_asx_csv, parse_asx_csv, upsert_listings, backfill_prospect_matrix, record_refresh, get_conn as scraper_conn
+        from asx_scraper import fetch_asx_csv, parse_asx_csv, upsert_listings, backfill_prospect_matrix
         import httpx
+
+        # Log a "running" row
+        conn = get_conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "INSERT INTO refresh_runs (run_type, status, triggered_by) "
+                    "VALUES ('manual', 'running', %s) RETURNING id",
+                    (triggered_by,),
+                )
+                run_id = str(cur.fetchone()[0])
+                conn.commit()
+        finally:
+            put_conn(conn)
 
         _refresh_progress["phase"] = "Downloading ASX listings..."
         with httpx.Client(headers={
@@ -993,16 +1009,34 @@ def _run_refresh_with_progress(triggered_by: str):
         _refresh_progress["detail"] = f"{len(listings)} companies found"
 
         _refresh_progress["phase"] = "Updating database..."
-        conn = scraper_conn()
+        from asx_scraper import get_conn as scraper_conn
+        sconn = scraper_conn()
         try:
-            stats = upsert_listings(conn, listings)
+            stats = upsert_listings(sconn, listings)
             _refresh_progress["detail"] = f"{stats.new_listings} new, {stats.updated_listings} updated, {stats.delisted_count} delisted"
 
             _refresh_progress["phase"] = "Backfilling prospect matrix..."
-            backfill_prospect_matrix(conn)
-            record_refresh(conn, "manual", stats, triggered_by)
+            backfill_prospect_matrix(sconn)
+            sconn.commit()
         finally:
-            conn.close()
+            sconn.close()
+
+        # Update the run row with results
+        conn = get_conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    UPDATE refresh_runs SET
+                        status = 'completed', completed_at = NOW(),
+                        total_listings = %s, new_listings = %s,
+                        updated_listings = %s, delisted_count = %s,
+                        target_sector_count = %s
+                    WHERE id = %s
+                """, (len(listings), stats.new_listings, stats.updated_listings,
+                      stats.delisted_count, stats.target_sector_count, run_id))
+                conn.commit()
+        finally:
+            put_conn(conn)
 
         _refresh_progress["phase"] = "Complete"
         _refresh_progress["detail"] = f"{len(listings)} listings — {stats.new_listings} new, {stats.target_sector_count} target sector"
@@ -1011,6 +1045,19 @@ def _run_refresh_with_progress(triggered_by: str):
         logger.error(f"Refresh failed: {e}")
         _refresh_progress["phase"] = "Failed"
         _refresh_progress["detail"] = str(e)
+        # Log failure
+        if run_id:
+            try:
+                conn = get_conn()
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "UPDATE refresh_runs SET status = 'failed', completed_at = NOW(), error_message = %s WHERE id = %s",
+                        (str(e)[:500], run_id),
+                    )
+                    conn.commit()
+                put_conn(conn)
+            except Exception:
+                pass
     finally:
         _refresh_progress["running"] = False
 
@@ -1033,6 +1080,26 @@ def get_refresh_status():
         "phase": _refresh_progress["phase"],
         "detail": _refresh_progress["detail"],
     }
+
+
+@app.get("/api/refresh/latest")
+def get_latest_refresh():
+    """Return the most recent completed or failed refresh run."""
+    conn = get_conn()
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("""
+                SELECT id, run_type, status, total_listings, new_listings,
+                       updated_listings, delisted_count, target_sector_count,
+                       error_message, started_at, completed_at, triggered_by
+                FROM refresh_runs
+                WHERE status IN ('completed', 'failed')
+                ORDER BY started_at DESC LIMIT 1
+            """)
+            row = cur.fetchone()
+            return row or {}
+    finally:
+        put_conn(conn)
 
 
 @app.post("/api/enrich/{ticker}")
