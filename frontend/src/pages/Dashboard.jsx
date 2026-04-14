@@ -16,11 +16,13 @@ export default function Dashboard() {
   const [sectors, setSectors] = useState([])
   const [refreshing, setRefreshing] = useState(false)
   const [enriching, setEnriching] = useState(false)
+  const [enrichProgress, setEnrichProgress] = useState(null)
   const [toast, setToast] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const navigate = useNavigate()
   const intervalRef = useRef(null)
+  const enrichPollRef = useRef(null)
 
   const loadData = async (silent = false) => {
     if (!silent) setLoading(true)
@@ -39,11 +41,38 @@ export default function Dashboard() {
     setLoading(false)
   }
 
+  const startEnrichPolling = () => {
+    if (enrichPollRef.current) return
+    enrichPollRef.current = setInterval(async () => {
+      try {
+        const r = await fetch('/api/enrich/status')
+        const d = await r.json()
+        setEnrichProgress(d)
+        if (!d.running) {
+          clearInterval(enrichPollRef.current)
+          enrichPollRef.current = null
+          setEnriching(false)
+          setEnrichProgress(null)
+          setToast({ ok: true, msg: `Enrichment complete — ${d.ok} enriched, ${d.skip} skipped, ${d.fail} failed` })
+          setTimeout(() => setToast(null), 10000)
+          loadData(true)
+        }
+      } catch { /* ignore */ }
+    }, 3000)
+  }
+
   useEffect(() => {
     loadData()
-    // Auto-refresh every 60 seconds
+    // Check if enrichment is already running
+    fetch('/api/enrich/status').then(r => r.json()).then(d => {
+      if (d.running) { setEnriching(true); setEnrichProgress(d); startEnrichPolling() }
+    }).catch(() => {})
+    // Auto-refresh stats every 60 seconds
     intervalRef.current = setInterval(() => loadData(true), 60000)
-    return () => clearInterval(intervalRef.current)
+    return () => {
+      clearInterval(intervalRef.current)
+      if (enrichPollRef.current) clearInterval(enrichPollRef.current)
+    }
   }, [])
 
   const handleRefresh = async () => {
@@ -65,11 +94,13 @@ export default function Dashboard() {
       const r = await fetch('/api/enrich/batch', { method: 'POST' })
       const d = await r.json()
       setToast({ ok: true, msg: d.message || 'Batch enrichment started' })
+      setTimeout(() => setToast(null), 5000)
+      startEnrichPolling()
     } catch {
       setToast({ ok: false, msg: 'Batch enrichment failed — check API' })
+      setEnriching(false)
+      setTimeout(() => setToast(null), 5000)
     }
-    setEnriching(false)
-    setTimeout(() => setToast(null), 5000)
   }
 
   // Error state
@@ -77,7 +108,7 @@ export default function Dashboard() {
     return (
       <div className="p-6">
         <div className="card p-6 text-center" style={{ borderLeft: '3px solid #ef4444' }}>
-          <div className="font-mono text-sm mb-2" style={{ color: '#ef4444' }}>⚠ Connection Error</div>
+          <div className="font-mono text-sm mb-2" style={{ color: '#ef4444' }}>Connection Error</div>
           <div className="text-sm mb-4" style={{ color: '#8fa3bf' }}>{error}</div>
           <button onClick={() => loadData()} className="font-mono text-xs px-4 py-2"
             style={{ background: '#1e6fd4', color: '#fff', border: 'none', cursor: 'pointer' }}>
@@ -127,7 +158,7 @@ export default function Dashboard() {
               cursor: enriching ? 'not-allowed' : 'pointer',
             }}
           >
-            {enriching ? 'ENRICHING...' : '⚡ ENRICH ALL'}
+            {enriching && enrichProgress ? `ENRICHING ${enrichProgress.current}/${enrichProgress.total}` : enriching ? 'ENRICHING...' : 'ENRICH ALL'}
           </button>
           <button
             onClick={handleRefresh}
@@ -140,7 +171,7 @@ export default function Dashboard() {
               cursor: refreshing ? 'not-allowed' : 'pointer',
             }}
           >
-            {refreshing ? 'REFRESHING...' : '↻ REFRESH ASX DATA'}
+            {refreshing ? 'REFRESHING...' : 'REFRESH ASX DATA'}
           </button>
         </div>
       </div>
@@ -152,10 +183,32 @@ export default function Dashboard() {
         </div>
       )}
 
+      {/* Enrichment Progress */}
+      {enriching && enrichProgress && enrichProgress.running && (
+        <div className="mb-4 px-4 py-3 font-mono text-xs" style={{ background: '#111418', border: '1px solid #14532d' }}>
+          <div className="flex items-center justify-between mb-2">
+            <span style={{ color: '#22c55e' }}>
+              Enriching {enrichProgress.current} of {enrichProgress.total} — {enrichProgress.ticker}
+            </span>
+            <span style={{ color: '#4a5a70' }}>
+              {enrichProgress.ok} done · {enrichProgress.skip} skipped · {enrichProgress.fail} failed
+            </span>
+          </div>
+          <div style={{ width: '100%', height: 4, background: '#1e2530' }}>
+            <div style={{
+              width: `${enrichProgress.total > 0 ? (enrichProgress.current / enrichProgress.total * 100) : 0}%`,
+              height: '100%',
+              background: '#22c55e',
+              transition: 'width 0.3s',
+            }} />
+          </div>
+        </div>
+      )}
+
       {/* Connection warning (shown when background poll fails but we have stale data) */}
       {error && stats && (
         <div className="mb-4 px-4 py-2 text-xs font-mono" style={{ background: '#1f0808', border: '1px solid #7f1d1d', color: '#ef4444' }}>
-          ⚠ API unreachable — showing last loaded data.{' '}
+          API unreachable — showing last loaded data.{' '}
           <button onClick={() => loadData()} style={{ textDecoration: 'underline', background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer' }}>Retry</button>
         </div>
       )}
@@ -173,7 +226,7 @@ export default function Dashboard() {
           style={{ borderLeft: '3px solid #D4AF37', maxWidth: 220 }}
           onClick={() => navigate('/watchlist')}
         >
-          <div className="text-xs font-mono uppercase tracking-widest mb-1" style={{ color: '#8B7120' }}>★ Watchlist</div>
+          <div className="text-xs font-mono uppercase tracking-widest mb-1" style={{ color: '#8B7120' }}>Watchlist</div>
           <div className="text-3xl font-mono font-semibold" style={{ color: '#D4AF37' }}>
             {stats?.watchlist_count ?? '—'}
           </div>

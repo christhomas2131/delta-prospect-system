@@ -43,7 +43,7 @@ from psycopg2 import pool
 # In-memory API key store (not persisted to DB — intentional)
 # ---------------------------------------------------------------------------
 
-_api_key_store: dict = {"key": None, "valid": False}
+_api_key_store: dict = {"key": None, "valid": False, "source": None}
 
 # ---------------------------------------------------------------------------
 # In-memory enrichment progress tracker
@@ -146,6 +146,15 @@ async def lifespan(app: FastAPI):
         db_pool.putconn(conn)
 
     logger.info("Database pool initialized — connection verified")
+
+    # Auto-load Anthropic API key from environment variable if set
+    env_key = os.getenv("ANTHROPIC_API_KEY", "").strip()
+    if env_key and env_key.startswith("sk-ant-"):
+        _api_key_store["key"] = env_key
+        _api_key_store["valid"] = True
+        _api_key_store["source"] = "env"
+        logger.info("Anthropic API key loaded from ANTHROPIC_API_KEY environment variable")
+
     yield
     if db_pool:
         db_pool.closeall()
@@ -856,6 +865,7 @@ def save_api_key(req: ApiKeyRequest):
     if not key.startswith("sk-ant-"):
         _api_key_store["key"] = key
         _api_key_store["valid"] = False
+        _api_key_store["source"] = "manual"
         return {"configured": True, "valid": False, "message": "Key format invalid — must start with sk-ant-"}
 
     try:
@@ -869,7 +879,8 @@ def save_api_key(req: ApiKeyRequest):
         )
         _api_key_store["key"] = key
         _api_key_store["valid"] = True
-        logger.info("Anthropic API key validated and stored")
+        _api_key_store["source"] = "manual"
+        logger.info("Anthropic API key validated and stored (manual)")
         return {"configured": True, "valid": True, "message": "API key validated successfully"}
     except Exception as exc:
         _api_key_store["key"] = key
@@ -883,6 +894,7 @@ def get_api_key_status():
     return {
         "configured": _api_key_store["key"] is not None,
         "valid": _api_key_store["valid"],
+        "source": _api_key_store.get("source"),  # "env" or "manual" or None
     }
 
 

@@ -99,7 +99,7 @@ export default function Settings() {
           value={apiKey}
           onChange={e => setApiKey(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && handleSave()}
-          placeholder={status.valid ? '••••••••••••••••••••• (key saved)' : 'sk-ant-api03-...'}
+          placeholder={status.valid && status.source === 'env' ? 'sk-ant-...configured via environment' : status.valid ? 'sk-ant-...key saved (manual)' : 'sk-ant-api03-...'}
           className="w-full px-3 py-2 text-sm font-mono mb-3"
           style={{ background: '#0d1017', border: '1px solid #1e2530', color: '#e2e8f0' }}
         />
@@ -142,7 +142,12 @@ export default function Settings() {
         </div>
         <div className="flex items-center justify-between py-2">
           <span className="text-sm" style={{ color: '#8fa3bf' }}>AI Deep Analysis</span>
-          <StatusDot {...status} />
+          <span className="flex items-center gap-2">
+            <StatusDot {...status} />
+            {status.valid && status.source === 'env' && (
+              <span className="font-mono text-xs" style={{ color: '#4a5a70' }}>(env var)</span>
+            )}
+          </span>
         </div>
       </div>
     </div>
