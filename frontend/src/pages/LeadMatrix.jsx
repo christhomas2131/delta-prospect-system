@@ -86,6 +86,8 @@ export default function LeadMatrix({ watchlistOnly = false }) {
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  const [enriching, setEnriching] = useState(false)
+  const [toast, setToast] = useState(null)
 
   // Per-row watchlist state (for optimistic updates)
   const [watchlisted, setWatchlisted] = useState({})
@@ -247,24 +249,57 @@ export default function LeadMatrix({ watchlistOnly = false }) {
               {total.toLocaleString()} {watchlistOnly ? 'starred' : 'prospects'}
             </div>
           </div>
-          {/* CSV Export */}
-          <a
-            href={getExportUrl()}
-            className="font-mono text-xs px-3 py-1.5 flex items-center gap-1.5 mt-1"
-            style={{
-              background: 'none',
-              border: '1px solid #1e2530',
-              color: '#4a5a70',
-              textDecoration: 'none',
-              cursor: 'pointer',
-            }}
-            onMouseEnter={e => { e.currentTarget.style.borderColor = '#2d3a4d'; e.currentTarget.style.color = '#8fa3bf' }}
-            onMouseLeave={e => { e.currentTarget.style.borderColor = '#1e2530'; e.currentTarget.style.color = '#4a5a70' }}
-          >
-            ↓ Export CSV
-          </a>
+          <div className="flex items-center gap-2 mt-1">
+            <button
+              onClick={async () => {
+                setEnriching(true)
+                try {
+                  const r = await fetch('/api/enrich/batch', { method: 'POST' })
+                  const d = await r.json()
+                  setToast({ ok: true, msg: d.message || 'Batch enrichment started' })
+                } catch {
+                  setToast({ ok: false, msg: 'Batch enrichment failed' })
+                }
+                setEnriching(false)
+                setTimeout(() => setToast(null), 5000)
+              }}
+              disabled={enriching}
+              className="font-mono text-xs px-4 py-1.5 transition-all"
+              style={{
+                background: enriching ? '#1e2530' : '#14532d',
+                color: enriching ? '#4a5a70' : '#22c55e',
+                border: '1px solid',
+                borderColor: enriching ? '#1e2530' : '#166534',
+                cursor: enriching ? 'not-allowed' : 'pointer',
+              }}
+            >
+              {enriching ? 'ENRICHING...' : 'ENRICH ALL'}
+            </button>
+            <a
+              href={getExportUrl()}
+              className="font-mono text-xs px-3 py-1.5 flex items-center gap-1.5"
+              style={{
+                background: 'none',
+                border: '1px solid #1e2530',
+                color: '#4a5a70',
+                textDecoration: 'none',
+                cursor: 'pointer',
+              }}
+              onMouseEnter={e => { e.currentTarget.style.borderColor = '#2d3a4d'; e.currentTarget.style.color = '#8fa3bf' }}
+              onMouseLeave={e => { e.currentTarget.style.borderColor = '#1e2530'; e.currentTarget.style.color = '#4a5a70' }}
+            >
+              ↓ Export CSV
+            </a>
+          </div>
         </div>
       </div>
+
+      {/* Toast */}
+      {toast && (
+        <div className="mb-4 px-4 py-2 text-sm font-mono" style={{ background: toast.ok ? '#052e16' : '#1f0808', border: `1px solid ${toast.ok ? '#14532d' : '#7f1d1d'}`, color: toast.ok ? '#22c55e' : '#ef4444' }}>
+          {toast.msg}
+        </div>
+      )}
 
       {/* Search + dropdowns */}
       <div className="flex gap-2 mb-3 flex-wrap">

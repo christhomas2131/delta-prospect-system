@@ -114,11 +114,7 @@ export default function Layout({ children }) {
 
         {/* Footer */}
         <div className="px-4 py-3 font-mono text-xs" style={{ color: '#2d3a4d', borderTop: '1px solid #1e2530' }}>
-          {aiActive ? (
-            <span style={{ color: '#8B7120' }}>&#9670; AI Enhanced</span>
-          ) : (
-            'ASX Free Edition'
-          )}
+          v2.0
         </div>
       </aside>
 
