@@ -22,11 +22,14 @@ DO $$ BEGIN
         JOIN pg_enum e ON e.enumtypid = t.oid
         WHERE t.typname = 'pressure_type' AND e.enumlabel = 'operational'
     ) THEN
+        -- Drop views that depend on pressure_type column first
+        DROP VIEW IF EXISTS v_prospect_dashboard CASCADE;
+        DROP VIEW IF EXISTS v_sector_summary CASCADE;
         -- Wipe old signal data (safe — will be re-enriched with new pillars)
         TRUNCATE pressure_signals;
-        -- Drop the column that depends on the enum, then the enum itself
-        ALTER TABLE pressure_signals DROP COLUMN IF EXISTS pressure_type;
-        DROP TYPE pressure_type;
+        -- Drop the column and enum with CASCADE to clear all dependencies
+        ALTER TABLE pressure_signals DROP COLUMN IF EXISTS pressure_type CASCADE;
+        DROP TYPE IF EXISTS pressure_type CASCADE;
         RAISE NOTICE 'Migration: dropped old pressure_type enum and cleared signal data';
     END IF;
 EXCEPTION
