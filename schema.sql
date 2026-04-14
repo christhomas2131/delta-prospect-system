@@ -207,6 +207,16 @@ DO $$ BEGIN
     END IF;
 END $$;
 
+-- Re-add unique constraint if the migration dropped it
+DO $$ BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conrelid = 'pressure_signals'::regclass AND conname = 'uq_signal_source'
+    ) THEN
+        ALTER TABLE pressure_signals ADD CONSTRAINT uq_signal_source UNIQUE (prospect_id, pressure_type, source_url);
+    END IF;
+END $$;
+
 CREATE INDEX IF NOT EXISTS idx_signals_prospect ON pressure_signals (prospect_id);
 CREATE INDEX IF NOT EXISTS idx_signals_type     ON pressure_signals (pressure_type);
 CREATE INDEX IF NOT EXISTS idx_signals_strength ON pressure_signals (strength);
