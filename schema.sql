@@ -14,47 +14,59 @@ CREATE EXTENSION IF NOT EXISTS "pg_trgm";
 -- ENUMS
 -- ============================================================================
 
-CREATE TYPE prospect_status AS ENUM (
-    'unscreened',
-    'qualified',
-    'enriched',
-    'ready_for_outreach',
-    'suggested_dq',
-    'disqualified',
-    'archived'
-);
+DO $$ BEGIN
+    CREATE TYPE prospect_status AS ENUM (
+        'unscreened',
+        'qualified',
+        'enriched',
+        'ready_for_outreach',
+        'suggested_dq',
+        'disqualified',
+        'archived'
+    );
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
-CREATE TYPE enrichment_source AS ENUM (
-    'asx_announcement',
-    'annual_report',
-    'quarterly_report',
-    'investor_presentation',
-    'media_article',
-    'manual_entry'
-);
+DO $$ BEGIN
+    CREATE TYPE enrichment_source AS ENUM (
+        'asx_announcement',
+        'annual_report',
+        'quarterly_report',
+        'investor_presentation',
+        'media_article',
+        'manual_entry'
+    );
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
-CREATE TYPE pressure_type AS ENUM (
-    'operational',
-    'cost',
-    'safety',
-    'governance',
-    'environmental',
-    'market',
-    'workforce'
-);
+DO $$ BEGIN
+    CREATE TYPE pressure_type AS ENUM (
+        'operational',
+        'cost',
+        'safety',
+        'governance',
+        'environmental',
+        'market',
+        'workforce'
+    );
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
-CREATE TYPE signal_strength AS ENUM (
-    'weak',
-    'moderate',
-    'strong'
-);
+DO $$ BEGIN
+    CREATE TYPE signal_strength AS ENUM (
+        'weak',
+        'moderate',
+        'strong'
+    );
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
 -- ============================================================================
 -- CORE TABLES
 -- ============================================================================
 
 -- Master list: every ASX-listed entity, refreshed weekly from the CSV feed
-CREATE TABLE asx_listings (
+CREATE TABLE IF NOT EXISTS asx_listings (
     id                   UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     ticker               VARCHAR(10) NOT NULL,
     company_name         TEXT NOT NULL,
@@ -73,16 +85,16 @@ CREATE TABLE asx_listings (
     CONSTRAINT uq_ticker UNIQUE (ticker)
 );
 
-CREATE INDEX idx_listings_target   ON asx_listings (is_target_sector) WHERE is_active = TRUE;
-CREATE INDEX idx_listings_sector   ON asx_listings (gics_sector)      WHERE is_active = TRUE;
-CREATE INDEX idx_listings_ticker   ON asx_listings (ticker);
-CREATE INDEX idx_listings_name_trg ON asx_listings USING gin (company_name gin_trgm_ops);
+CREATE INDEX IF NOT EXISTS idx_listings_target   ON asx_listings (is_target_sector) WHERE is_active = TRUE;
+CREATE INDEX IF NOT EXISTS idx_listings_sector   ON asx_listings (gics_sector)      WHERE is_active = TRUE;
+CREATE INDEX IF NOT EXISTS idx_listings_ticker   ON asx_listings (ticker);
+CREATE INDEX IF NOT EXISTS idx_listings_name_trg ON asx_listings USING gin (company_name gin_trgm_ops);
 
 -- ============================================================================
 -- PROSPECT MATRIX — the filtered, scored, working set
 -- ============================================================================
 
-CREATE TABLE prospect_matrix (
+CREATE TABLE IF NOT EXISTS prospect_matrix (
     id                       UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     listing_id               UUID NOT NULL REFERENCES asx_listings(id) ON DELETE CASCADE,
     status                   prospect_status NOT NULL DEFAULT 'unscreened',
@@ -113,20 +125,21 @@ CREATE TABLE prospect_matrix (
     warm_intro_contact       TEXT,
 
     analyst_notes            TEXT,
+    is_watchlisted           BOOLEAN DEFAULT FALSE,
     created_at               TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at               TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 
     CONSTRAINT uq_listing_prospect UNIQUE (listing_id)
 );
 
-CREATE INDEX idx_prospect_status ON prospect_matrix (status);
-CREATE INDEX idx_prospect_score  ON prospect_matrix (prospect_score DESC NULLS LAST);
+CREATE INDEX IF NOT EXISTS idx_prospect_status ON prospect_matrix (status);
+CREATE INDEX IF NOT EXISTS idx_prospect_score  ON prospect_matrix (prospect_score DESC NULLS LAST);
 
 -- ============================================================================
 -- PRESSURE SIGNALS — the core intelligence layer
 -- ============================================================================
 
-CREATE TABLE pressure_signals (
+CREATE TABLE IF NOT EXISTS pressure_signals (
     id               UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     prospect_id      UUID NOT NULL REFERENCES prospect_matrix(id) ON DELETE CASCADE,
     pressure_type    pressure_type NOT NULL,
@@ -146,15 +159,15 @@ CREATE TABLE pressure_signals (
     CONSTRAINT uq_signal_source UNIQUE (prospect_id, pressure_type, source_url)
 );
 
-CREATE INDEX idx_signals_prospect ON pressure_signals (prospect_id);
-CREATE INDEX idx_signals_type     ON pressure_signals (pressure_type);
-CREATE INDEX idx_signals_strength ON pressure_signals (strength);
+CREATE INDEX IF NOT EXISTS idx_signals_prospect ON pressure_signals (prospect_id);
+CREATE INDEX IF NOT EXISTS idx_signals_type     ON pressure_signals (pressure_type);
+CREATE INDEX IF NOT EXISTS idx_signals_strength ON pressure_signals (strength);
 
 -- ============================================================================
 -- ENRICHMENT LOG — audit trail
 -- ============================================================================
 
-CREATE TABLE enrichment_log (
+CREATE TABLE IF NOT EXISTS enrichment_log (
     id                  UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     listing_id          UUID NOT NULL REFERENCES asx_listings(id) ON DELETE CASCADE,
     action              TEXT NOT NULL,
@@ -172,14 +185,14 @@ CREATE TABLE enrichment_log (
     agent_version       TEXT
 );
 
-CREATE INDEX idx_enrich_listing ON enrichment_log (listing_id);
-CREATE INDEX idx_enrich_started ON enrichment_log (started_at DESC);
+CREATE INDEX IF NOT EXISTS idx_enrich_listing ON enrichment_log (listing_id);
+CREATE INDEX IF NOT EXISTS idx_enrich_started ON enrichment_log (started_at DESC);
 
 -- ============================================================================
 -- GICS SECTOR MAP — reference table for sector filtering
 -- ============================================================================
 
-CREATE TABLE gics_sector_map (
+CREATE TABLE IF NOT EXISTS gics_sector_map (
     industry_group TEXT PRIMARY KEY,
     gics_sector    TEXT NOT NULL,
     is_target      BOOLEAN NOT NULL DEFAULT FALSE,
@@ -223,7 +236,7 @@ ON CONFLICT (industry_group) DO UPDATE SET
 -- REFRESH RUNS — tracks weekly + on-demand refresh cycles
 -- ============================================================================
 
-CREATE TABLE refresh_runs (
+CREATE TABLE IF NOT EXISTS refresh_runs (
     id                  UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     run_type            TEXT NOT NULL CHECK (run_type IN ('weekly','manual','on_demand_single')),
     total_listings      INTEGER,
@@ -238,7 +251,7 @@ CREATE TABLE refresh_runs (
     triggered_by        TEXT NOT NULL DEFAULT 'system'
 );
 
-CREATE INDEX idx_refresh_started ON refresh_runs (started_at DESC);
+CREATE INDEX IF NOT EXISTS idx_refresh_started ON refresh_runs (started_at DESC);
 
 -- ============================================================================
 -- TRIGGERS
@@ -255,9 +268,12 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE TRIGGER trg_prospect_updated
-    BEFORE UPDATE ON prospect_matrix
-    FOR EACH ROW EXECUTE FUNCTION update_prospect_timestamp();
+DO $$ BEGIN
+    CREATE TRIGGER trg_prospect_updated
+        BEFORE UPDATE ON prospect_matrix
+        FOR EACH ROW EXECUTE FUNCTION update_prospect_timestamp();
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
 -- ============================================================================
 -- SCORING FUNCTION

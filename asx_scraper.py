@@ -42,7 +42,19 @@ HTTP_HEADERS = {
     "Accept-Language": "en-AU,en;q=0.9",
 }
 
-DB_CONFIG = {
+def _parse_database_url(url: str) -> dict:
+    from urllib.parse import urlparse
+    parsed = urlparse(url)
+    return {
+        "host": parsed.hostname or "localhost",
+        "port": parsed.port or 5432,
+        "dbname": (parsed.path or "/delta_prospect").lstrip("/"),
+        "user": parsed.username or "delta",
+        "password": parsed.password or "delta_dev",
+    }
+
+_database_url = os.getenv("DATABASE_URL")
+DB_CONFIG = _parse_database_url(_database_url) if _database_url else {
     "host":     os.getenv("DB_HOST", "localhost"),
     "port":     int(os.getenv("DB_PORT", "5432")),
     "dbname":   os.getenv("DB_NAME", "delta_prospect"),

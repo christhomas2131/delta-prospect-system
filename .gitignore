@@ -1,5 +1,6 @@
 # Python
 venv/
+.venv/
 __pycache__/
 *.pyc
 *.pyo
@@ -27,3 +28,12 @@ Thumbs.db
 *.tmp
 ~$*
 files.zip
+
+# Playwright
+.playwright/
+browser_data/
+
+# Build artifacts
+dist/
+build/
+*.exe

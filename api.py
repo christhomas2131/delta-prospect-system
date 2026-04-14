@@ -49,13 +49,31 @@ _api_key_store: dict = {"key": None, "valid": False}
 # Configuration
 # ---------------------------------------------------------------------------
 
-DB_CONFIG = {
-    "host": os.getenv("DB_HOST", "localhost"),
-    "port": int(os.getenv("DB_PORT", "5432")),
-    "dbname": os.getenv("DB_NAME", "delta_prospect"),
-    "user": os.getenv("DB_USER", "delta"),
-    "password": os.getenv("DB_PASSWORD", "delta_dev"),
-}
+def _parse_database_url(url: str) -> dict:
+    """Parse a DATABASE_URL (postgresql://user:pass@host:port/dbname) into psycopg2 params."""
+    from urllib.parse import urlparse
+    parsed = urlparse(url)
+    return {
+        "host": parsed.hostname or "localhost",
+        "port": parsed.port or 5432,
+        "dbname": (parsed.path or "/delta_prospect").lstrip("/"),
+        "user": parsed.username or "delta",
+        "password": parsed.password or "delta_dev",
+    }
+
+DATABASE_URL = os.getenv("DATABASE_URL")
+if DATABASE_URL:
+    DB_CONFIG = _parse_database_url(DATABASE_URL)
+else:
+    DB_CONFIG = {
+        "host": os.getenv("DB_HOST", "localhost"),
+        "port": int(os.getenv("DB_PORT", "5432")),
+        "dbname": os.getenv("DB_NAME", "delta_prospect"),
+        "user": os.getenv("DB_USER", "delta"),
+        "password": os.getenv("DB_PASSWORD", "delta_dev"),
+    }
+
+PORT = int(os.getenv("PORT", "8000"))
 
 # Auth (optional — set both to enable)
 AUTH_USER = os.getenv("AUTH_USER")
@@ -63,6 +81,9 @@ AUTH_PASSWORD = os.getenv("AUTH_PASSWORD")
 
 # CORS (comma-separated origins, or * for dev)
 ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "*").split(",")
+
+# Cron secret (protects /api/cron/enrich-all)
+CRON_SECRET = os.getenv("CRON_SECRET", "")
 
 # Static files (built frontend)
 FRONTEND_DIST = Path(__file__).parent / "frontend" / "dist"
@@ -93,28 +114,35 @@ async def lifespan(app: FastAPI):
     except psycopg2.OperationalError as e:
         logger.error(
             "Cannot connect to database at %s:%s/%s as user '%s'. "
-            "Check DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD in your .env file. "
+            "Check DATABASE_URL or DB_HOST/DB_PORT/DB_NAME/DB_USER/DB_PASSWORD. "
             "Error: %s",
             DB_CONFIG["host"], DB_CONFIG["port"], DB_CONFIG["dbname"],
             DB_CONFIG["user"], e,
         )
         sys.exit(1)
 
-    # Verify tables exist
+    # Auto-initialize schema if tables are missing
     conn = db_pool.getconn()
     try:
         with conn.cursor() as cur:
             cur.execute(
                 "SELECT COUNT(*) FROM information_schema.tables "
-                "WHERE table_name IN ('asx_listings', 'prospect_matrix', 'pressure_signals')"
+                "WHERE table_schema = 'public' AND table_name IN "
+                "('asx_listings', 'prospect_matrix', 'pressure_signals', "
+                "'enrichment_log', 'gics_sector_map', 'refresh_runs')"
             )
             count = cur.fetchone()[0]
-            if count < 3:
-                logger.error(
-                    "Database tables missing (%d/3 found). Run schema.sql first: "
-                    "psql -U delta -d delta_prospect -f schema.sql", count,
-                )
-                sys.exit(1)
+            if count < 6:
+                logger.info("Tables missing (%d/6 found) — running schema.sql to initialize...", count)
+                schema_path = Path(__file__).parent / "schema.sql"
+                if schema_path.is_file():
+                    sql = schema_path.read_text(encoding="utf-8")
+                    cur.execute(sql)
+                    conn.commit()
+                    logger.info("Schema initialized successfully")
+                else:
+                    logger.error("schema.sql not found at %s — cannot initialize database", schema_path)
+                    sys.exit(1)
     finally:
         db_pool.putconn(conn)
 
@@ -902,6 +930,57 @@ def trigger_batch_enrichment(background_tasks: BackgroundTasks):
 
     background_tasks.add_task(run_batch)
     return {"message": f"Batch enrichment started for {count} prospects", "count": count}
+
+
+# ---------------------------------------------------------------------------
+# Endpoints: Scheduled Cron Enrichment
+# ---------------------------------------------------------------------------
+
+@app.post("/api/cron/enrich-all")
+def cron_enrich_all(token: str = Query(None)):
+    """
+    Full ASX scrape + enrichment cycle for scheduled cron jobs.
+    Protected by CRON_SECRET token to prevent unauthorized access.
+    """
+    if not CRON_SECRET:
+        raise HTTPException(
+            status_code=503,
+            detail="CRON_SECRET not configured — set it in environment variables to enable this endpoint",
+        )
+    if not token or not secrets.compare_digest(token, CRON_SECRET):
+        raise HTTPException(status_code=401, detail="Invalid or missing cron token")
+
+    logger.info("Cron enrich-all triggered")
+    result = {"scrape": None, "enrichment": None, "errors": []}
+
+    # Step 1: Full ASX data refresh
+    try:
+        from asx_scraper import run_full_refresh
+        stats = run_full_refresh(triggered_by="cron")
+        result["scrape"] = {
+            "total_parsed": stats.total_parsed,
+            "new_listings": stats.new_listings,
+            "updated_listings": stats.updated_listings,
+            "delisted_count": stats.delisted_count,
+            "target_sector_count": stats.target_sector_count,
+        }
+    except Exception as e:
+        logger.error("Cron scrape failed: %s", e)
+        result["errors"].append(f"Scrape failed: {e}")
+
+    # Step 2: Batch enrichment
+    try:
+        from enrichment_agent import run_batch
+        run_batch()
+        result["enrichment"] = {"status": "completed"}
+    except Exception as e:
+        logger.error("Cron enrichment failed: %s", e)
+        result["errors"].append(f"Enrichment failed: {e}")
+
+    status_msg = "completed with errors" if result["errors"] else "completed successfully"
+    result["status"] = status_msg
+    logger.info("Cron enrich-all %s", status_msg)
+    return result
 
 
 @app.get("/api/refresh/history")
