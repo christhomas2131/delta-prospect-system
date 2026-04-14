@@ -121,28 +121,21 @@ async def lifespan(app: FastAPI):
         )
         sys.exit(1)
 
-    # Auto-initialize schema if tables are missing
+    # Always run schema.sql on startup — it's fully idempotent and ensures
+    # any new columns, functions, or migrations are applied.
     conn = db_pool.getconn()
     try:
         with conn.cursor() as cur:
-            cur.execute(
-                "SELECT COUNT(*) FROM information_schema.tables "
-                "WHERE table_schema = 'public' AND table_name IN "
-                "('asx_listings', 'prospect_matrix', 'pressure_signals', "
-                "'enrichment_log', 'gics_sector_map', 'refresh_runs')"
-            )
-            count = cur.fetchone()[0]
-            if count < 6:
-                logger.info("Tables missing (%d/6 found) — running schema.sql to initialize...", count)
-                schema_path = Path(__file__).parent / "schema.sql"
-                if schema_path.is_file():
-                    sql = schema_path.read_text(encoding="utf-8")
-                    cur.execute(sql)
-                    conn.commit()
-                    logger.info("Schema initialized successfully")
-                else:
-                    logger.error("schema.sql not found at %s — cannot initialize database", schema_path)
-                    sys.exit(1)
+            schema_path = Path(__file__).parent / "schema.sql"
+            if schema_path.is_file():
+                logger.info("Running schema.sql (idempotent — safe to re-run)...")
+                sql = schema_path.read_text(encoding="utf-8")
+                cur.execute(sql)
+                conn.commit()
+                logger.info("Schema up to date")
+            else:
+                logger.error("schema.sql not found at %s — cannot initialize database", schema_path)
+                sys.exit(1)
     finally:
         db_pool.putconn(conn)
 
