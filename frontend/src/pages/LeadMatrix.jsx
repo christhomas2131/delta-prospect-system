@@ -104,8 +104,8 @@ export default function LeadMatrix({ watchlistOnly = false }) {
           enrichPollRef.current = null
           setEnriching(false)
           setToast({ ok: true, msg: `Enrichment complete — ${d.ok} enriched, ${d.skip} skipped, ${d.fail} failed` })
-          setTimeout(() => setToast(null), 8000)
-          setEnrichProgress(null)
+          setTimeout(() => setToast(null), 10000)
+          setTimeout(() => setEnrichProgress(null), 10000)
           load() // refresh the table
         }
       } catch { /* ignore poll errors */ }
@@ -335,7 +335,7 @@ export default function LeadMatrix({ watchlistOnly = false }) {
       )}
 
       {/* Enrichment Progress */}
-      {enriching && enrichProgress && enrichProgress.running && (
+      {enrichProgress && (
         <div className="mb-4 px-4 py-3 font-mono text-xs" style={{ background: '#111418', border: '1px solid #14532d' }}>
           <div className="flex items-center justify-between mb-2">
             <span style={{ color: '#22c55e' }}>

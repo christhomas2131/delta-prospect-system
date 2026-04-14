@@ -66,8 +66,8 @@ export default function Dashboard() {
           } else {
             setToast({ ok: true, msg: `ASX refresh complete — ${d.detail}` })
           }
-          setRefreshProgress(null)
           setTimeout(() => setToast(null), 10000)
+          setTimeout(() => setRefreshProgress(null), 10000)
           loadData(true)
           loadLastRefresh()
         }
@@ -86,9 +86,9 @@ export default function Dashboard() {
           clearInterval(enrichPollRef.current)
           enrichPollRef.current = null
           setEnriching(false)
-          setEnrichProgress(null)
           setToast({ ok: true, msg: `Enrichment complete — ${d.ok} enriched, ${d.skip} skipped, ${d.fail} failed` })
           setTimeout(() => setToast(null), 10000)
+          setTimeout(() => setEnrichProgress(null), 10000)
           loadData(true)
         }
       } catch { /* ignore */ }
@@ -226,7 +226,7 @@ export default function Dashboard() {
       )}
 
       {/* Enrichment Progress */}
-      {enriching && enrichProgress && enrichProgress.running && (
+      {enrichProgress && (
         <div className="mb-4 px-4 py-3 font-mono text-xs" style={{ background: '#111418', border: '1px solid #14532d' }}>
           <div className="flex items-center justify-between mb-2">
             <span style={{ color: '#22c55e' }}>
@@ -248,7 +248,7 @@ export default function Dashboard() {
       )}
 
       {/* Refresh Progress */}
-      {refreshing && refreshProgress && refreshProgress.running && (
+      {refreshProgress && (
         <div className="mb-4 px-4 py-3 font-mono text-xs" style={{ background: '#111418', border: '1px solid #1e3a5f' }}>
           <div className="flex items-center gap-3">
             <span style={{ color: '#3b82f6' }}>{refreshProgress.phase}</span>
