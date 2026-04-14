@@ -46,6 +46,12 @@ from psycopg2 import pool
 _api_key_store: dict = {"key": None, "valid": False}
 
 # ---------------------------------------------------------------------------
+# In-memory enrichment progress tracker
+# ---------------------------------------------------------------------------
+
+_enrich_progress: dict = {"running": False, "current": 0, "total": 0, "ticker": "", "ok": 0, "skip": 0, "fail": 0}
+
+# ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
 
@@ -476,6 +482,10 @@ def export_prospects_csv(
                      WHERE ps2.prospect_id = pm.id
                      ORDER BY CASE ps2.strength WHEN 'strong' THEN 1 WHEN 'moderate' THEN 2 ELSE 3 END,
                               ps2.detected_at DESC LIMIT 1) AS top_signal_source,
+                    (SELECT ps2.source_url FROM pressure_signals ps2
+                     WHERE ps2.prospect_id = pm.id
+                     ORDER BY CASE ps2.strength WHEN 'strong' THEN 1 WHEN 'moderate' THEN 2 ELSE 3 END,
+                              ps2.detected_at DESC LIMIT 1) AS top_signal_url,
                     MAX(ps.source_date) AS latest_signal_date,
                     pm.analyst_notes
                 FROM prospect_matrix pm
@@ -503,8 +513,8 @@ def export_prospects_csv(
             "Ticker", "Company Name", "Sector", "Industry Group", "Market Cap",
             "Lead Tier", "Production", "License to Operate", "Cost", "People",
             "Quality", "Future Readiness", "Total Signals", "Top Signal",
-            "Top Signal Source", "Latest Signal Date", "Status", "Prospect Score",
-            "Analyst Notes",
+            "Source Announcement", "Source URL", "Latest Signal Date",
+            "Status", "Prospect Score", "Analyst Notes",
         ])
         for row in rows:
             writer.writerow([
@@ -523,6 +533,7 @@ def export_prospects_csv(
                 row["total_signals"],
                 row["top_signal"] or "",
                 row["top_signal_source"] or "",
+                row["top_signal_url"] or "",
                 row["latest_signal_date"] or "",
                 row["status"],
                 float(row["prospect_score"]) if row["prospect_score"] else "",
@@ -960,10 +971,56 @@ def trigger_enrichment(ticker: str, background_tasks: BackgroundTasks):
     return {"message": f"Enrichment started for {ticker.upper()}"}
 
 
+def _run_batch_with_progress():
+    """Wrapper around enrichment run_batch that tracks progress."""
+    from enrichment_agent import get_conn as enrich_conn, get_prospects, detect_signals, generate_profile, save_results
+    from asx_browser import ASXFetcher
+    import time as _time
+
+    _enrich_progress["running"] = True
+    _enrich_progress["current"] = 0
+    _enrich_progress["ok"] = 0
+    _enrich_progress["skip"] = 0
+    _enrich_progress["fail"] = 0
+    _enrich_progress["ticker"] = ""
+
+    conn = enrich_conn()
+    try:
+        prospects = get_prospects(conn)
+        _enrich_progress["total"] = len(prospects)
+        logger.info(f"Batch enrichment started: {len(prospects)} prospects")
+
+        with ASXFetcher() as fetcher:
+            for i, p in enumerate(prospects):
+                tk = p["ticker"]
+                _enrich_progress["current"] = i + 1
+                _enrich_progress["ticker"] = tk
+                try:
+                    anns = fetcher.fetch_announcements(tk)
+                    _time.sleep(2.0)
+                    if not anns:
+                        _enrich_progress["skip"] += 1
+                        continue
+                    signals = detect_signals(p["company_name"], anns)
+                    profile = generate_profile(p["gics_sector"], signals)
+                    save_results(conn, p, signals, profile, anns)
+                    _enrich_progress["ok"] += 1
+                except Exception as e:
+                    logger.error(f"{tk}: {e}")
+                    _enrich_progress["fail"] += 1
+    except Exception as e:
+        logger.error(f"Batch enrichment failed: {e}")
+    finally:
+        conn.close()
+        _enrich_progress["running"] = False
+        logger.info(f"Batch enrichment finished: {_enrich_progress['ok']} ok, {_enrich_progress['skip']} skip, {_enrich_progress['fail']} fail")
+
+
 @app.post("/api/enrich/batch")
 def trigger_batch_enrichment(background_tasks: BackgroundTasks):
     """Trigger batch enrichment for all unscreened/qualified prospects (runs in background)."""
-    from enrichment_agent import run_batch
+    if _enrich_progress["running"]:
+        return {"message": "Enrichment already running", "count": _enrich_progress["total"], "running": True}
 
     # Count how many will be processed
     conn = get_conn()
@@ -979,8 +1036,22 @@ def trigger_batch_enrichment(background_tasks: BackgroundTasks):
     if count == 0:
         return {"message": "No unscreened or qualified prospects to enrich", "count": 0}
 
-    background_tasks.add_task(run_batch)
+    background_tasks.add_task(_run_batch_with_progress)
     return {"message": f"Batch enrichment started for {count} prospects", "count": count}
+
+
+@app.get("/api/enrich/status")
+def get_enrichment_status():
+    """Return current enrichment progress."""
+    return {
+        "running": _enrich_progress["running"],
+        "current": _enrich_progress["current"],
+        "total": _enrich_progress["total"],
+        "ticker": _enrich_progress["ticker"],
+        "ok": _enrich_progress["ok"],
+        "skip": _enrich_progress["skip"],
+        "fail": _enrich_progress["fail"],
+    }
 
 
 # ---------------------------------------------------------------------------

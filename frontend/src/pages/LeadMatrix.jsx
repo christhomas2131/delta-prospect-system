@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { LeadTierBadge } from '../components/Badges'
 
@@ -87,7 +87,38 @@ export default function LeadMatrix({ watchlistOnly = false }) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [enriching, setEnriching] = useState(false)
+  const [enrichProgress, setEnrichProgress] = useState(null)
   const [toast, setToast] = useState(null)
+  const enrichPollRef = useRef(null)
+
+  // Poll enrichment progress while running
+  const startPolling = () => {
+    if (enrichPollRef.current) return
+    enrichPollRef.current = setInterval(async () => {
+      try {
+        const r = await fetch('/api/enrich/status')
+        const d = await r.json()
+        setEnrichProgress(d)
+        if (!d.running) {
+          clearInterval(enrichPollRef.current)
+          enrichPollRef.current = null
+          setEnriching(false)
+          setToast({ ok: true, msg: `Enrichment complete — ${d.ok} enriched, ${d.skip} skipped, ${d.fail} failed` })
+          setTimeout(() => setToast(null), 8000)
+          setEnrichProgress(null)
+          load() // refresh the table
+        }
+      } catch { /* ignore poll errors */ }
+    }, 3000)
+  }
+
+  // Check if enrichment is already running on mount
+  useEffect(() => {
+    fetch('/api/enrich/status').then(r => r.json()).then(d => {
+      if (d.running) { setEnriching(true); setEnrichProgress(d); startPolling() }
+    }).catch(() => {})
+    return () => { if (enrichPollRef.current) clearInterval(enrichPollRef.current) }
+  }, [])
 
   // Per-row watchlist state (for optimistic updates)
   const [watchlisted, setWatchlisted] = useState({})
@@ -257,11 +288,13 @@ export default function LeadMatrix({ watchlistOnly = false }) {
                   const r = await fetch('/api/enrich/batch', { method: 'POST' })
                   const d = await r.json()
                   setToast({ ok: true, msg: d.message || 'Batch enrichment started' })
+                  setTimeout(() => setToast(null), 5000)
+                  startPolling()
                 } catch {
                   setToast({ ok: false, msg: 'Batch enrichment failed' })
+                  setEnriching(false)
+                  setTimeout(() => setToast(null), 5000)
                 }
-                setEnriching(false)
-                setTimeout(() => setToast(null), 5000)
               }}
               disabled={enriching}
               className="font-mono text-xs px-4 py-1.5 transition-all"
@@ -273,7 +306,7 @@ export default function LeadMatrix({ watchlistOnly = false }) {
                 cursor: enriching ? 'not-allowed' : 'pointer',
               }}
             >
-              {enriching ? 'ENRICHING...' : 'ENRICH ALL'}
+              {enriching && enrichProgress ? `ENRICHING ${enrichProgress.current}/${enrichProgress.total}` : enriching ? 'ENRICHING...' : 'ENRICH ALL'}
             </button>
             <a
               href={getExportUrl()}
@@ -298,6 +331,28 @@ export default function LeadMatrix({ watchlistOnly = false }) {
       {toast && (
         <div className="mb-4 px-4 py-2 text-sm font-mono" style={{ background: toast.ok ? '#052e16' : '#1f0808', border: `1px solid ${toast.ok ? '#14532d' : '#7f1d1d'}`, color: toast.ok ? '#22c55e' : '#ef4444' }}>
           {toast.msg}
+        </div>
+      )}
+
+      {/* Enrichment Progress */}
+      {enriching && enrichProgress && enrichProgress.running && (
+        <div className="mb-4 px-4 py-3 font-mono text-xs" style={{ background: '#111418', border: '1px solid #14532d' }}>
+          <div className="flex items-center justify-between mb-2">
+            <span style={{ color: '#22c55e' }}>
+              Enriching {enrichProgress.current} of {enrichProgress.total} — {enrichProgress.ticker}
+            </span>
+            <span style={{ color: '#4a5a70' }}>
+              {enrichProgress.ok} done · {enrichProgress.skip} skipped · {enrichProgress.fail} failed
+            </span>
+          </div>
+          <div style={{ width: '100%', height: 4, background: '#1e2530' }}>
+            <div style={{
+              width: `${enrichProgress.total > 0 ? (enrichProgress.current / enrichProgress.total * 100) : 0}%`,
+              height: '100%',
+              background: '#22c55e',
+              transition: 'width 0.3s',
+            }} />
+          </div>
         </div>
       )}
 

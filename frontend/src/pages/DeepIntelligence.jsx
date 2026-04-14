@@ -775,7 +775,7 @@ export default function DeepIntelligence() {
                 <a href={prospect.website.startsWith('http') ? prospect.website : `https://${prospect.website}`}
                   target="_blank" rel="noopener noreferrer"
                   style={{ color: '#1e6fd4', marginLeft: 8 }}>
-                  {prospect.website} \u2197
+                  {prospect.website} ↗
                 </a>
               )}
             </div>
@@ -972,7 +972,15 @@ export default function DeepIntelligence() {
                         </span>
                         {s.source_title && (
                           <div className="font-mono text-xs mt-0.5 truncate" style={{ color: '#4a5a70' }}>
-                            {s.source_title}
+                            {s.source_url ? (
+                              <a href={s.source_url} target="_blank" rel="noopener noreferrer"
+                                style={{ color: '#1e6fd4', textDecoration: 'none' }}
+                                onMouseEnter={e => { e.currentTarget.style.textDecoration = 'underline' }}
+                                onMouseLeave={e => { e.currentTarget.style.textDecoration = 'none' }}
+                                title={s.source_title}>
+                                {s.source_title}
+                              </a>
+                            ) : s.source_title}
                           </div>
                         )}
                       </td>
