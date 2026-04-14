@@ -15,6 +15,7 @@ export default function Dashboard() {
   const [stats, setStats] = useState(null)
   const [sectors, setSectors] = useState([])
   const [refreshing, setRefreshing] = useState(false)
+  const [refreshProgress, setRefreshProgress] = useState(null)
   const [enriching, setEnriching] = useState(false)
   const [enrichProgress, setEnrichProgress] = useState(null)
   const [toast, setToast] = useState(null)
@@ -23,6 +24,7 @@ export default function Dashboard() {
   const navigate = useNavigate()
   const intervalRef = useRef(null)
   const enrichPollRef = useRef(null)
+  const refreshPollRef = useRef(null)
 
   const loadData = async (silent = false) => {
     if (!silent) setLoading(true)
@@ -39,6 +41,30 @@ export default function Dashboard() {
       setError('Cannot reach the API — is the backend running?')
     }
     setLoading(false)
+  }
+
+  const startRefreshPolling = () => {
+    if (refreshPollRef.current) return
+    refreshPollRef.current = setInterval(async () => {
+      try {
+        const r = await fetch('/api/refresh/status')
+        const d = await r.json()
+        setRefreshProgress(d)
+        if (!d.running) {
+          clearInterval(refreshPollRef.current)
+          refreshPollRef.current = null
+          setRefreshing(false)
+          if (d.phase === 'Failed') {
+            setToast({ ok: false, msg: `Refresh failed — ${d.detail}` })
+          } else {
+            setToast({ ok: true, msg: `ASX refresh complete — ${d.detail}` })
+          }
+          setRefreshProgress(null)
+          setTimeout(() => setToast(null), 10000)
+          loadData(true)
+        }
+      } catch { /* ignore */ }
+    }, 2000)
   }
 
   const startEnrichPolling = () => {
@@ -67,11 +93,16 @@ export default function Dashboard() {
     fetch('/api/enrich/status').then(r => r.json()).then(d => {
       if (d.running) { setEnriching(true); setEnrichProgress(d); startEnrichPolling() }
     }).catch(() => {})
+    // Check if refresh is already running
+    fetch('/api/refresh/status').then(r => r.json()).then(d => {
+      if (d.running) { setRefreshing(true); setRefreshProgress(d); startRefreshPolling() }
+    }).catch(() => {})
     // Auto-refresh stats every 60 seconds
     intervalRef.current = setInterval(() => loadData(true), 60000)
     return () => {
       clearInterval(intervalRef.current)
       if (enrichPollRef.current) clearInterval(enrichPollRef.current)
+      if (refreshPollRef.current) clearInterval(refreshPollRef.current)
     }
   }, [])
 
@@ -81,11 +112,13 @@ export default function Dashboard() {
       const r = await fetch('/api/refresh', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ triggered_by: 'dashboard' }) })
       const d = await r.json()
       setToast({ ok: true, msg: d.message || 'Refresh started' })
+      setTimeout(() => setToast(null), 5000)
+      startRefreshPolling()
     } catch {
       setToast({ ok: false, msg: 'Refresh failed — check API' })
+      setRefreshing(false)
+      setTimeout(() => setToast(null), 5000)
     }
-    setRefreshing(false)
-    setTimeout(() => setToast(null), 4000)
   }
 
   const handleBatchEnrich = async () => {
@@ -171,7 +204,7 @@ export default function Dashboard() {
               cursor: refreshing ? 'not-allowed' : 'pointer',
             }}
           >
-            {refreshing ? 'REFRESHING...' : 'REFRESH ASX DATA'}
+            {refreshing && refreshProgress ? `REFRESHING...` : refreshing ? 'REFRESHING...' : 'REFRESH ASX DATA'}
           </button>
         </div>
       </div>
@@ -201,6 +234,18 @@ export default function Dashboard() {
               background: '#22c55e',
               transition: 'width 0.3s',
             }} />
+          </div>
+        </div>
+      )}
+
+      {/* Refresh Progress */}
+      {refreshing && refreshProgress && refreshProgress.running && (
+        <div className="mb-4 px-4 py-3 font-mono text-xs" style={{ background: '#111418', border: '1px solid #1e3a5f' }}>
+          <div className="flex items-center gap-3">
+            <span style={{ color: '#3b82f6' }}>{refreshProgress.phase}</span>
+            {refreshProgress.detail && (
+              <span style={{ color: '#4a5a70' }}>{refreshProgress.detail}</span>
+            )}
           </div>
         </div>
       )}

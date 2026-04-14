@@ -52,6 +52,12 @@ _api_key_store: dict = {"key": None, "valid": False, "source": None}
 _enrich_progress: dict = {"running": False, "current": 0, "total": 0, "ticker": "", "ok": 0, "skip": 0, "fail": 0}
 
 # ---------------------------------------------------------------------------
+# In-memory refresh progress tracker
+# ---------------------------------------------------------------------------
+
+_refresh_progress: dict = {"running": False, "phase": "", "detail": ""}
+
+# ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
 
@@ -965,13 +971,68 @@ def get_dashboard_stats():
 # Endpoints: Refresh & Enrichment
 # ---------------------------------------------------------------------------
 
+def _run_refresh_with_progress(triggered_by: str):
+    """Wrapper around ASX refresh that tracks progress."""
+    _refresh_progress["running"] = True
+    _refresh_progress["phase"] = "Fetching ASX CSV..."
+    _refresh_progress["detail"] = ""
+    try:
+        from asx_scraper import fetch_asx_csv, parse_asx_csv, upsert_listings, backfill_prospect_matrix, record_refresh, get_conn as scraper_conn
+        import httpx
+
+        _refresh_progress["phase"] = "Downloading ASX listings..."
+        with httpx.Client(headers={
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "en-AU,en;q=0.9",
+        }, timeout=30) as client:
+            csv_text = fetch_asx_csv(client)
+
+        _refresh_progress["phase"] = "Parsing listings..."
+        listings = parse_asx_csv(csv_text)
+        _refresh_progress["detail"] = f"{len(listings)} companies found"
+
+        _refresh_progress["phase"] = "Updating database..."
+        conn = scraper_conn()
+        try:
+            stats = upsert_listings(conn, listings)
+            _refresh_progress["detail"] = f"{stats.new_listings} new, {stats.updated_listings} updated, {stats.delisted_count} delisted"
+
+            _refresh_progress["phase"] = "Backfilling prospect matrix..."
+            backfill_prospect_matrix(conn)
+            record_refresh(conn, "manual", stats, triggered_by)
+        finally:
+            conn.close()
+
+        _refresh_progress["phase"] = "Complete"
+        _refresh_progress["detail"] = f"{len(listings)} listings — {stats.new_listings} new, {stats.target_sector_count} target sector"
+        logger.info(f"Refresh complete: {len(listings)} listings")
+    except Exception as e:
+        logger.error(f"Refresh failed: {e}")
+        _refresh_progress["phase"] = "Failed"
+        _refresh_progress["detail"] = str(e)
+    finally:
+        _refresh_progress["running"] = False
+
+
 @app.post("/api/refresh")
 def trigger_refresh(req: RefreshRequest, background_tasks: BackgroundTasks):
     """Trigger a manual ASX data refresh (runs in background)."""
-    from asx_scraper import run_full_refresh
-    
-    background_tasks.add_task(run_full_refresh, req.triggered_by)
+    if _refresh_progress["running"]:
+        return {"message": "Refresh already running", "running": True}
+
+    background_tasks.add_task(_run_refresh_with_progress, req.triggered_by)
     return {"message": "Refresh started", "triggered_by": req.triggered_by}
+
+
+@app.get("/api/refresh/status")
+def get_refresh_status():
+    """Return current refresh progress."""
+    return {
+        "running": _refresh_progress["running"],
+        "phase": _refresh_progress["phase"],
+        "detail": _refresh_progress["detail"],
+    }
 
 
 @app.post("/api/enrich/{ticker}")
