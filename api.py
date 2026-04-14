@@ -1102,15 +1102,6 @@ def get_latest_refresh():
         put_conn(conn)
 
 
-@app.post("/api/enrich/{ticker}")
-def trigger_enrichment(ticker: str, background_tasks: BackgroundTasks):
-    """Trigger enrichment for a single company (runs in background)."""
-    from enrichment_agent import run_single
-
-    background_tasks.add_task(run_single, ticker.upper())
-    return {"message": f"Enrichment started for {ticker.upper()}"}
-
-
 def _run_batch_with_progress():
     """Wrapper around enrichment run_batch that tracks progress.
     Processes ALL target sector companies, not just unscreened/qualified."""
@@ -1204,6 +1195,15 @@ def get_enrichment_status():
         "skip": _enrich_progress["skip"],
         "fail": _enrich_progress["fail"],
     }
+
+
+@app.post("/api/enrich/{ticker}")
+def trigger_enrichment(ticker: str, background_tasks: BackgroundTasks):
+    """Trigger enrichment for a single company (runs in background)."""
+    from enrichment_agent import run_single
+
+    background_tasks.add_task(run_single, ticker.upper())
+    return {"message": f"Enrichment started for {ticker.upper()}"}
 
 
 # ---------------------------------------------------------------------------
