@@ -1,5 +1,5 @@
-import ProspectMatrix from './ProspectMatrix'
+import LeadMatrix from './LeadMatrix'
 
 export default function Watchlist() {
-  return <ProspectMatrix watchlistOnly={true} />
+  return <LeadMatrix watchlistOnly={true} />
 }

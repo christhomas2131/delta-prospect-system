@@ -12,6 +12,8 @@ frontend/dist/
 
 # Environment
 .env
+*.env
+ANTHROPIC_API_KEY*
 
 # Logs
 *.log

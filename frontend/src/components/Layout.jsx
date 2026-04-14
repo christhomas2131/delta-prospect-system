@@ -3,8 +3,9 @@ import { useEffect, useState } from 'react'
 
 const NAV = [
   { to: '/', label: 'Dashboard', icon: '◈' },
+  { to: '/leads', label: 'Lead Matrix', icon: '▦' },
+  { to: '/deep-intelligence', label: 'Deep Intelligence', icon: '◆' },
   { to: '/watchlist', label: 'Watchlist', icon: '★' },
-  { to: '/prospects', label: 'Prospect Matrix', icon: '▦' },
   { to: '/settings', label: 'Settings', icon: '⚙' },
 ]
 
@@ -37,7 +38,7 @@ export default function Layout({ children }) {
           onClick={() => setSidebarOpen(!sidebarOpen)}
           style={{ background: 'none', border: 'none', color: '#8fa3bf', cursor: 'pointer', fontSize: 20, padding: '0 4px' }}
         >
-          {sidebarOpen ? '✕' : '☰'}
+          {sidebarOpen ? '\u2715' : '\u2630'}
         </button>
       </div>
 
@@ -90,17 +91,22 @@ export default function Layout({ children }) {
                 }`
               }
               style={({ isActive }) => ({
-                color: isActive ? '#e2e8f0' : to === '/watchlist' ? '#8B7120' : '#8fa3bf',
+                color: isActive ? '#e2e8f0'
+                  : to === '/watchlist' ? '#8B7120'
+                  : to === '/deep-intelligence' ? '#D4AF37'
+                  : '#8fa3bf',
                 background: isActive ? '#161b24' : 'transparent',
                 borderLeft: isActive
-                  ? `2px solid ${to === '/watchlist' ? '#D4AF37' : '#1e6fd4'}`
+                  ? `2px solid ${to === '/watchlist' ? '#D4AF37' : to === '/deep-intelligence' ? '#D4AF37' : '#1e6fd4'}`
                   : '2px solid transparent',
               })}
             >
-              <span className="font-mono text-xs" style={to === '/watchlist' ? { color: '#D4AF37' } : {}}>{icon}</span>
+              <span className="font-mono text-xs"
+                style={to === '/watchlist' ? { color: '#D4AF37' } : to === '/deep-intelligence' ? { color: '#D4AF37' } : {}}
+              >{icon}</span>
               <span className="flex-1">{label}</span>
               {to === '/settings' && aiActive && (
-                <span className="font-mono leading-none" style={{ color: '#D4AF37', fontSize: 10 }}>◆</span>
+                <span className="font-mono leading-none" style={{ color: '#D4AF37', fontSize: 10 }}>&#9670;</span>
               )}
             </NavLink>
           ))}
@@ -109,7 +115,7 @@ export default function Layout({ children }) {
         {/* Footer */}
         <div className="px-4 py-3 font-mono text-xs" style={{ color: '#2d3a4d', borderTop: '1px solid #1e2530' }}>
           {aiActive ? (
-            <span style={{ color: '#8B7120' }}>◆ AI Enhanced</span>
+            <span style={{ color: '#8B7120' }}>&#9670; AI Enhanced</span>
           ) : (
             'ASX Free Edition'
           )}

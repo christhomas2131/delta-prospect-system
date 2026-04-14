@@ -1,9 +1,14 @@
 """
-Enrichment Agent — Rule-Based Pressure Signal Detection
-=========================================================
-Scans ASX announcement titles for keyword patterns to detect
-operational, cost, safety, governance, environmental, market,
-and workforce pressure signals. No API costs. $0 to run.
+Enrichment Agent — New Delta 6-Pillar Signal Detection
+========================================================
+Scans ASX announcement titles for keyword patterns mapped to
+New Delta's 6 service pillars:
+  1. Production (40%)
+  2. License to Operate (20%)
+  3. Cost (15%)
+  4. People (15%)
+  5. Quality (5%)
+  6. Future Readiness (5%)
 
 Usage:
     python enrichment_agent.py --mode batch
@@ -53,176 +58,210 @@ logging.basicConfig(
 logger = logging.getLogger("enrichment_agent")
 
 # ---------------------------------------------------------------------------
-# Keyword Pattern Library
+# New Delta 6-Pillar Keyword Library
 # ---------------------------------------------------------------------------
+# Each entry: (regex_pattern, strength, summary_template)
+# Patterns are matched case-insensitively against announcement titles.
 
-PRESSURE_PATTERNS = {
-    "operational": [
-        (r"production\s+(downgrade|cut|halt|suspen|curtail|shut)", "strong",
-         "{company} announced a production downgrade or suspension"),
-        (r"force\s+majeure", "strong",
-         "{company} declared force majeure on operations"),
-        (r"unplanned\s+(outage|shutdown|downtime|maintenance)", "strong",
-         "{company} reported unplanned operational downtime"),
-        (r"processing\s+(issue|problem|failure|interrupt)", "strong",
-         "{company} reported processing issues"),
-        (r"mine\s+(closure|shut|suspend)", "strong",
-         "{company} announced mine closure or suspension"),
-        (r"plant\s+(closure|shut|suspend)", "strong",
-         "{company} announced plant closure or suspension"),
-        (r"production\s+(report|update|result)", "moderate",
-         "{company} released a production update"),
-        (r"quarterly\s+activit", "moderate",
-         "{company} released quarterly activities report"),
-        (r"operational\s+(update|review|report)", "moderate",
-         "{company} released an operational update"),
-        (r"ramp[\s-]?up", "moderate",
-         "{company} is in an operational ramp-up phase"),
-        (r"commissioning", "moderate",
-         "{company} is commissioning new operations"),
-        (r"throughput", "moderate",
-         "{company} reported on processing throughput"),
-        (r"ore\s+reserve", "moderate",
-         "{company} updated ore reserve estimates"),
-        (r"exploration\s+(update|result)", "weak",
-         "{company} released exploration results"),
-        (r"drilling\s+(result|update|program)", "weak",
-         "{company} released drilling results"),
+PILLAR_PATTERNS = {
+    "production": [
+        # Strong signals — active failures / downgrades
+        (r"production below guidance", "strong",
+         "{company} reported production below guidance"),
+        (r"missed targets?", "strong",
+         "{company} missed production targets"),
+        (r"downgraded outlook", "strong",
+         "{company} downgraded its outlook"),
+        (r"operational disruption", "strong",
+         "{company} reported operational disruption"),
+        (r"throughput below plan", "strong",
+         "{company} reported throughput below plan"),
+        (r"production guidance reduced", "strong",
+         "{company} reduced production guidance"),
+        (r"nameplate capacity not achieved", "strong",
+         "{company} has not achieved nameplate capacity"),
+        # Moderate signals — challenges / delays
+        (r"weather impacts?", "moderate",
+         "{company} reported weather impacts on operations"),
+        (r"maintenance downtime", "moderate",
+         "{company} reported maintenance downtime"),
+        (r"ramp[\s-]?up slower than expected", "moderate",
+         "{company} ramp-up is slower than expected"),
+        (r"commissioning delay(?:s|ed)", "moderate",
+         "{company} reported commissioning delays"),
+        (r"logistics? constraints?", "moderate",
+         "{company} facing logistics constraints"),
+        (r"project delayed", "moderate",
+         "{company} reported project delays"),
+    ],
+    "license_to_operate": [
+        # Strong signals — serious incidents / regulatory action
+        (r"TRIFR increase", "strong",
+         "{company} reported TRIFR increase"),
+        (r"AIFR increase", "strong",
+         "{company} reported AIFR increase"),
+        (r"repeatable incidents?", "strong",
+         "{company} flagged repeatable safety incidents"),
+        (r"safety performance below target", "strong",
+         "{company} safety performance below target"),
+        (r"unplanned shutdown due to safety", "strong",
+         "{company} had unplanned shutdown due to safety"),
+        (r"prohibition notice", "strong",
+         "{company} received a prohibition notice"),
+        (r"regulator intervention", "strong",
+         "{company} subject to regulator intervention"),
+        (r"environmental infringement", "strong",
+         "{company} received environmental infringement notice"),
+        (r"licen[cs]e breach", "strong",
+         "{company} reported a licence breach"),
+        # Moderate signals — emerging risks
+        (r"environmental approval delay", "moderate",
+         "{company} facing environmental approval delays"),
+        (r"regulatory challenges?", "moderate",
+         "{company} facing regulatory challenges"),
+        (r"community (?:concerns?|opposition)", "moderate",
+         "{company} facing community concerns or opposition"),
+        (r"asset integrity issues?", "moderate",
+         "{company} reported asset integrity issues"),
+        (r"compliance issues?", "moderate",
+         "{company} flagged compliance issues"),
+        (r"assurance gaps?", "moderate",
+         "{company} identified assurance gaps"),
+        (r"improvement notice", "moderate",
+         "{company} received an improvement notice"),
+        (r"safety alert", "moderate",
+         "{company} issued a safety alert"),
     ],
     "cost": [
-        (r"cost\s+(overrun|blowout|escala|increase|pressure)", "strong",
-         "{company} flagged cost pressures or overruns"),
+        # Strong signals — material financial pressure
+        (r"cost overruns?", "strong",
+         "{company} reported cost overruns"),
+        (r"capital blowouts?", "strong",
+         "{company} reported capital blowouts"),
         (r"impairment", "strong",
          "{company} announced an asset impairment"),
-        (r"write[\s-]?(down|off)", "strong",
+        (r"write[\s-]?down", "strong",
          "{company} announced a write-down"),
-        (r"loss\s+(after|before|for|of)", "strong",
-         "{company} reported a financial loss"),
-        (r"capital\s+raising", "strong",
-         "{company} is raising capital, potential cash pressure"),
-        (r"debt\s+(restructur|refinanc|facility|breach)", "strong",
-         "{company} is restructuring debt obligations"),
-        (r"cost\s+(reduc|cut|saving|optimi)", "moderate",
-         "{company} announced cost reduction initiatives"),
-        (r"capex\s+(reduc|cut|review|defer)", "moderate",
-         "{company} is reducing or deferring capital expenditure"),
-        (r"guidance\s+(downgrade|reduc|cut|lower|revis)", "moderate",
-         "{company} downgraded financial guidance"),
-        (r"profit\s+(warning|downgrade|decline)", "moderate",
-         "{company} issued a profit warning"),
-        (r"budget\s+(review|overrun|pressure)", "moderate",
-         "{company} flagged budget concerns"),
-        (r"restructur", "moderate",
-         "{company} announced a restructuring program"),
-        (r"half\s+year\s+result", "weak",
-         "{company} released half year financial results"),
-        (r"annual\s+report", "weak",
-         "{company} released its annual report"),
-        (r"quarterly\s+report", "weak",
-         "{company} released quarterly financial report"),
+        (r"capital rais(?:e|ing)", "strong",
+         "{company} is raising capital — potential cash pressure"),
+        (r"going concern", "strong",
+         "{company} flagged going concern risk"),
+        # Moderate signals — cost pressure indicators
+        (r"cost pressures?", "moderate",
+         "{company} flagged cost pressures"),
+        (r"unit costs? increased", "moderate",
+         "{company} reported unit cost increases"),
+        (r"inflation impacts?", "moderate",
+         "{company} impacted by inflation"),
+        (r"margin compression", "moderate",
+         "{company} experiencing margin compression"),
+        (r"lower reali[sz]ed prices?", "moderate",
+         "{company} reporting lower realised prices"),
+        (r"inefficienc(?:y|ies)", "moderate",
+         "{company} flagged operational inefficiencies"),
+        (r"productivity decline", "moderate",
+         "{company} reported productivity decline"),
+        (r"budget exceeded", "moderate",
+         "{company} exceeded budget"),
     ],
-    "safety": [
-        (r"fatal", "strong",
-         "{company} reported a fatality at operations"),
-        (r"serious\s+(incident|injury|accident)", "strong",
-         "{company} reported a serious safety incident"),
-        (r"safety\s+(breach|violation|failure|incident|alert)", "strong",
-         "{company} reported a safety incident or breach"),
-        (r"regulator.{0,20}(action|penalty|fine|sanction|order|notice)", "strong",
-         "{company} received regulatory action"),
-        (r"prohibition\s+notice", "strong",
-         "{company} received a prohibition notice"),
-        (r"stop\s+work", "strong",
-         "{company} issued or received a stop work order"),
-        (r"safety\s+(review|audit|improvement|update)", "moderate",
-         "{company} is conducting safety reviews"),
-        (r"environmental\s+(incident|breach|spill|release)", "moderate",
-         "{company} reported an environmental incident"),
-        (r"compliance\s+(issue|review|update|breach)", "moderate",
-         "{company} flagged compliance concerns"),
-        (r"sustainability\s+report", "weak",
-         "{company} released a sustainability report"),
-        (r"safety\s+record", "weak",
-         "{company} reported on safety performance"),
-    ],
-    "governance": [
-        (r"(ceo|managing\s+director|md)\s+(resign|depart|terminat|remov|replac|step)", "strong",
-         "{company} CEO/MD departure announced"),
-        (r"board\s+(spill|dispute|challeng)", "strong",
-         "{company} facing board-level governance challenges"),
-        (r"class\s+action", "strong",
-         "{company} facing class action proceedings"),
-        (r"(asic|asx)\s+(query|investigation|inquiry|enforcement)", "strong",
-         "{company} subject to regulatory inquiry"),
-        (r"(cfo|director|chairman|chair)\s+(resign|depart|appoint|replac)", "moderate",
-         "{company} announced leadership changes"),
-        (r"board\s+(change|renewal|appointment|resign)", "moderate",
-         "{company} announced board changes"),
-        (r"strategy\s+(review|update|change|pivot|reset)", "moderate",
-         "{company} announced a strategic review"),
-        (r"(agm|annual\s+general\s+meeting)", "weak",
-         "{company} held its annual general meeting"),
-        (r"investor\s+presentation", "weak",
-         "{company} released an investor presentation"),
-        (r"corporate\s+governance", "weak",
-         "{company} released corporate governance statement"),
-    ],
-    "environmental": [
-        (r"tailings\s+(dam|storage|facility|breach|failure)", "strong",
-         "{company} reported tailings-related issues"),
-        (r"(spill|contamina|pollut)", "strong",
-         "{company} reported an environmental contamination event"),
-        (r"remediation", "strong",
-         "{company} undertaking environmental remediation"),
-        (r"epa.{0,15}(notice|order|action|penalty|fine)", "strong",
-         "{company} received EPA enforcement action"),
-        (r"(emission|carbon|climate)\s+(reduc|target|report|plan|risk)", "moderate",
-         "{company} addressing emissions or climate risks"),
-        (r"rehabilitation\s+(plan|program|provision|liabilit)", "moderate",
-         "{company} addressing site rehabilitation obligations"),
-        (r"water\s+(management|licen|usage|risk|scarcit)", "moderate",
-         "{company} flagged water management concerns"),
-        (r"environmental\s+(approval|permit|assessment|impact)", "moderate",
-         "{company} navigating environmental approvals"),
-        (r"esg\s+(report|update|rating|strateg)", "weak",
-         "{company} released ESG information"),
-        (r"sustainability", "weak",
-         "{company} reported on sustainability"),
-    ],
-    "market": [
-        (r"commodity\s+price\s+(crash|collapse|decline|drop|fall)", "strong",
-         "{company} impacted by commodity price decline"),
-        (r"(contract|offtake)\s+(loss|terminat|cancel|expir)", "strong",
-         "{company} lost a key contract or offtake agreement"),
-        (r"demand\s+(decline|drop|fall|weak|slow)", "strong",
-         "{company} facing weakening market demand"),
-        (r"(gold|iron\s+ore|copper|lithium|coal|oil|gas|nickel)\s+price", "moderate",
-         "{company} exposed to commodity price movements"),
-        (r"market\s+(update|outlook|condition|review)", "moderate",
-         "{company} commented on market conditions"),
-        (r"(contract|offtake)\s+(award|sign|secur|new|renew)", "moderate",
-         "{company} secured new contracts"),
-        (r"(export|trade|tariff|sanction)", "moderate",
-         "{company} exposed to trade or export risks"),
-        (r"commodity\s+(review|update|report)", "weak",
-         "{company} reviewed commodity market conditions"),
-    ],
-    "workforce": [
-        (r"(strike|industrial\s+action|work\s+stoppage)", "strong",
+    "people": [
+        # Strong signals — workforce crisis
+        (r"labo[u]?r shortages?", "strong",
+         "{company} facing labour shortages"),
+        (r"industrial action", "strong",
          "{company} experiencing industrial action"),
-        (r"(redundanc|retrenchment|layoff|job\s+(cut|loss))", "strong",
-         "{company} announced workforce reductions"),
-        (r"(skill|labour|labor)\s+(shortage|crisis|gap|challenge)", "strong",
-         "{company} flagged workforce shortage challenges"),
-        (r"enterprise\s+(agreement|bargaining)", "moderate",
-         "{company} negotiating enterprise agreements"),
-        (r"workforce\s+(plan|strateg|review|restructur)", "moderate",
-         "{company} restructuring workforce"),
-        (r"(retention|turnover|attrition)", "moderate",
-         "{company} addressing staff retention challenges"),
-        (r"(hiring|recruitment|new\s+appoint)", "weak",
-         "{company} making new appointments"),
+        (r"managing director resigned", "strong",
+         "{company} managing director resigned"),
+        (r"skills? shortages?", "strong",
+         "{company} flagged skills shortage"),
+        # Moderate signals — workforce challenges
+        (r"operator availability", "moderate",
+         "{company} facing operator availability issues"),
+        (r"capability gaps?", "moderate",
+         "{company} identified capability gaps"),
+        (r"contractor performance issues?", "moderate",
+         "{company} reported contractor performance issues"),
+        (r"low engagement", "moderate",
+         "{company} reported low workforce engagement"),
+        (r"high turnover", "moderate",
+         "{company} experiencing high staff turnover"),
+        (r"training required", "moderate",
+         "{company} identified training requirements"),
+        (r"leadership capability uplift", "moderate",
+         "{company} undertaking leadership capability uplift"),
+        (r"CEO appointed", "moderate",
+         "{company} appointed new CEO"),
+        (r"restructur(?:e|ing)", "moderate",
+         "{company} announced a restructure"),
+        (r"voluntary redundanc(?:y|ies)", "moderate",
+         "{company} offering voluntary redundancies"),
+        (r"enterprise agreement", "moderate",
+         "{company} negotiating enterprise agreement"),
     ],
+    "quality": [
+        # Strong signals — serious quality failures
+        (r"product recall", "strong",
+         "{company} issued a product recall"),
+        (r"customer dispute", "strong",
+         "{company} facing a customer dispute"),
+        (r"warranty claim", "strong",
+         "{company} facing warranty claims"),
+        # Moderate signals — quality issues
+        (r"non[\s-]?conformance(?:s)?\s*(?:increasing)?", "moderate",
+         "{company} reported non-conformances"),
+        (r"rework", "moderate",
+         "{company} reported rework requirements"),
+        (r"defects?", "moderate",
+         "{company} reported defects"),
+        (r"processing issues?", "moderate",
+         "{company} reported processing issues"),
+        (r"plant reliability issues?", "moderate",
+         "{company} reported plant reliability issues"),
+        (r"data inconsistenc(?:y|ies)", "moderate",
+         "{company} flagged data inconsistency"),
+        (r"reporting discrepanc(?:y|ies)", "moderate",
+         "{company} flagged reporting discrepancies"),
+        (r"commissioning issues?", "moderate",
+         "{company} reported commissioning issues"),
+        (r"performance variability", "moderate",
+         "{company} reported performance variability"),
+        (r"quality audit", "weak",
+         "{company} undergoing a quality audit"),
+    ],
+    "future_readiness": [
+        # Strong signals — governance / strategic dysfunction
+        (r"governance issues?", "strong",
+         "{company} flagged governance issues"),
+        (r"lack of alignment", "strong",
+         "{company} flagged lack of alignment"),
+        (r"fragmented decision making", "strong",
+         "{company} suffering from fragmented decision making"),
+        # Moderate signals — organisational friction
+        (r"silos?", "moderate",
+         "{company} facing organisational silos"),
+        (r"poor communication", "moderate",
+         "{company} flagged poor communication"),
+        (r"unclear strategy", "moderate",
+         "{company} has unclear strategy"),
+        (r"lack of visibility", "moderate",
+         "{company} flagged lack of visibility"),
+        (r"reactive management", "moderate",
+         "{company} operating in reactive management mode"),
+        (r"unclear roles and responsibilities", "moderate",
+         "{company} has unclear roles and responsibilities"),
+        (r"slow decision making", "moderate",
+         "{company} suffering from slow decision making"),
+    ],
+}
+
+# Pillar weights (for scoring context — actual DB scoring is in SQL function)
+PILLAR_WEIGHTS = {
+    "production": 0.40,
+    "license_to_operate": 0.20,
+    "cost": 0.15,
+    "people": 0.15,
+    "quality": 0.05,
+    "future_readiness": 0.05,
 }
 
 # ---------------------------------------------------------------------------
@@ -257,6 +296,16 @@ DEFAULT_PROFILE = {
     "headwind": "Operational and cost pressures",
 }
 
+# Headwind overrides based on dominant pillar
+PILLAR_HEADWIND_OVERRIDES = {
+    "production": "Production delivery and operational reliability challenges",
+    "license_to_operate": "Safety, environmental, and regulatory compliance risks",
+    "cost": "Cost inflation and margin pressure",
+    "people": "Labour shortages and workforce capability challenges",
+    "quality": "Quality control and plant reliability issues",
+    "future_readiness": "Governance and strategic alignment challenges",
+}
+
 # ---------------------------------------------------------------------------
 # Pattern Engine
 # ---------------------------------------------------------------------------
@@ -269,22 +318,22 @@ def detect_signals(company_name: str, announcements: list[dict]) -> list[dict]:
         title = ann.get("title", "")
         if not title:
             continue
-        for pressure_type, patterns in PRESSURE_PATTERNS.items():
+        for pillar, patterns in PILLAR_PATTERNS.items():
             for pattern, strength, summary_tpl in patterns:
                 if re.search(pattern, title, re.IGNORECASE):
-                    key = (pressure_type, pattern)
+                    key = (pillar, pattern)
                     if key in seen:
                         continue
                     seen.add(key)
                     signals.append({
-                        "pressure_type": pressure_type,
+                        "pressure_type": pillar,
                         "strength": strength,
                         "summary": summary_tpl.format(company=company_name),
                         "extracted_quote": title[:200],
                         "source_title": title,
                         "source_url": ann.get("url", ""),
                         "source_date": ann.get("date", ""),
-                        "confidence": {"strong": 0.80, "moderate": 0.60, "weak": 0.40}.get(strength, 0.5),
+                        "confidence": {"strong": 0.85, "moderate": 0.65, "weak": 0.40}.get(strength, 0.5),
                     })
 
     strength_order = {"strong": 0, "moderate": 1, "weak": 2}
@@ -297,6 +346,28 @@ def detect_signals(company_name: str, announcements: list[dict]) -> list[dict]:
     return signals
 
 
+def calculate_lead_tier(signals: list[dict]) -> str:
+    """Calculate lead tier based on signal distribution across pillars."""
+    if not signals:
+        return "not_qualified"
+
+    # Count pillars with strong signals
+    pillars_strong = set()
+    pillars_moderate = set()
+    for s in signals:
+        if s["strength"] == "strong":
+            pillars_strong.add(s["pressure_type"])
+        if s["strength"] in ("strong", "moderate"):
+            pillars_moderate.add(s["pressure_type"])
+
+    if len(pillars_strong) >= 3:
+        return "hot"
+    elif len(pillars_strong) >= 1 or len(pillars_moderate) >= 3:
+        return "warm"
+    else:
+        return "watch"
+
+
 def generate_profile(sector: str, signals: list[dict]) -> dict:
     base = SECTOR_PROFILES.get(sector, DEFAULT_PROFILE)
     if not signals:
@@ -306,6 +377,7 @@ def generate_profile(sector: str, signals: list[dict]) -> dict:
         moderate = sum(1 for s in signals if s["strength"] == "moderate")
         likelihood = min(10, max(1, int(strong * 3 + moderate * 1.5 + len(signals) * 0.5)))
 
+    # Determine dominant pillar
     type_counts = {}
     for s in signals:
         type_counts[s["pressure_type"]] = type_counts.get(s["pressure_type"], 0) + 1
@@ -313,16 +385,7 @@ def generate_profile(sector: str, signals: list[dict]) -> dict:
     headwind = base["headwind"]
     if type_counts:
         dominant = max(type_counts, key=type_counts.get)
-        overrides = {
-            "operational": "Operational reliability and production challenges",
-            "cost": "Cost inflation and margin pressure",
-            "safety": "Safety incidents and regulatory compliance risks",
-            "governance": "Leadership instability and governance concerns",
-            "environmental": "Environmental compliance and remediation obligations",
-            "market": "Commodity price volatility and demand uncertainty",
-            "workforce": "Labour shortages and industrial relations challenges",
-        }
-        headwind = overrides.get(dominant, headwind)
+        headwind = PILLAR_HEADWIND_OVERRIDES.get(dominant, headwind)
 
     return {
         "strategic_direction": base["direction"],
@@ -338,8 +401,8 @@ def generate_profile(sector: str, signals: list[dict]) -> dict:
 def get_conn():
     return psycopg2.connect(**DB_CONFIG)
 
-VALID_PT = {"operational","cost","safety","governance","environmental","market","workforce"}
-VALID_ST = {"weak","moderate","strong"}
+VALID_PT = {"production", "license_to_operate", "cost", "people", "quality", "future_readiness"}
+VALID_ST = {"weak", "moderate", "strong"}
 
 def get_prospects(conn, statuses=None, ticker=None):
     with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -357,7 +420,7 @@ def get_prospects(conn, statuses=None, ticker=None):
                 FROM prospect_matrix pm JOIN asx_listings l ON l.id=pm.listing_id
                 WHERE pm.status=ANY(%s::prospect_status[]) AND l.is_active=TRUE
                 ORDER BY l.market_cap_aud DESC NULLS LAST
-            """, (statuses or ["unscreened","qualified"],))
+            """, (statuses or ["unscreened", "qualified"],))
         return cur.fetchall()
 
 
@@ -379,24 +442,27 @@ def save_results(conn, prospect, signals, profile, announcements):
                     ON CONFLICT (prospect_id, pressure_type, source_url) DO NOTHING
                 """, (pid, pt, st, s["summary"], s.get("source_url"),
                       s.get("source_title"), s.get("source_date") or None,
-                      s["confidence"], "rule-engine-v1", s.get("extracted_quote")))
+                      s["confidence"], "rule-engine-v2", s.get("extracted_quote")))
                 inserted += cur.rowcount
             except Exception as e:
                 logger.error(f"{tk}: {e}")
 
         lk = max(1, min(10, int(profile["likelihood_score"])))
+        lead_tier = calculate_lead_tier(signals)
+
         cur.execute("""
             UPDATE prospect_matrix SET
                 strategic_direction=COALESCE(%s,strategic_direction),
                 primary_tailwind=COALESCE(%s,primary_tailwind),
                 primary_headwind=COALESCE(%s,primary_headwind),
                 likelihood_score=COALESCE(%s,likelihood_score),
+                lead_tier=%s,
                 status=CASE WHEN status IN ('unscreened','qualified')
                     THEN 'enriched'::prospect_status ELSE status END,
                 status_changed_by='enrichment_agent'
             WHERE id=%s
         """, (profile["strategic_direction"], profile["primary_tailwind"],
-              profile["primary_headwind"], lk, pid))
+              profile["primary_headwind"], lk, lead_tier, pid))
 
         cur.execute("SELECT calculate_prospect_score(%s)", (pid,))
         score = cur.fetchone()[0]
@@ -406,10 +472,10 @@ def save_results(conn, prospect, signals, profile, announcements):
                  documents_processed, signals_found,
                  triggered_by, completed_at, agent_version)
             VALUES (%s,'announcement_scan','asx_announcement',TRUE,%s,%s,
-                    'enrichment_agent',NOW(),'rule-engine-v1')
+                    'enrichment_agent',NOW(),'rule-engine-v2')
         """, (lid, len(announcements), inserted))
         conn.commit()
-        logger.info(f"{tk}: {inserted} signals, likelihood={lk}, score={score}")
+        logger.info(f"{tk}: {inserted} signals, likelihood={lk}, tier={lead_tier}, score={score}")
 
 
 def rescore_all(conn):
@@ -418,6 +484,7 @@ def rescore_all(conn):
         rows = cur.fetchall()
         for r in rows:
             cur.execute("SELECT calculate_prospect_score(%s)", (r["id"],))
+            cur.execute("SELECT calculate_lead_tier(%s)", (r["id"],))
         conn.commit()
         logger.info(f"Rescored {len(rows)} prospects")
 
@@ -427,7 +494,7 @@ def rescore_all(conn):
 
 def run_batch():
     logger.info("=" * 60)
-    logger.info("BATCH ENRICHMENT (rule-based, $0 cost) — START")
+    logger.info("BATCH ENRICHMENT (6-pillar, rule-based, $0 cost) — START")
     logger.info("=" * 60)
     conn = get_conn()
     try:
@@ -482,8 +549,8 @@ def run_single(ticker):
 # ---------------------------------------------------------------------------
 
 def main():
-    pa = argparse.ArgumentParser(description="Enrichment Agent (Rule-Based, Free)")
-    pa.add_argument("--mode", choices=["batch","single","rescore"], required=True)
+    pa = argparse.ArgumentParser(description="Enrichment Agent (6-Pillar, Rule-Based, Free)")
+    pa.add_argument("--mode", choices=["batch", "single", "rescore"], required=True)
     pa.add_argument("--ticker", type=str)
     args = pa.parse_args()
     if args.mode == "single" and not args.ticker:

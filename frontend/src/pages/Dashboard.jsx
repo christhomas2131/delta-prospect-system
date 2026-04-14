@@ -195,11 +195,11 @@ export default function Dashboard() {
             Sector Breakdown
           </span>
           <button
-            onClick={() => navigate('/prospects')}
+            onClick={() => navigate('/leads')}
             className="font-mono text-xs"
             style={{ color: '#1e6fd4', background: 'none', border: 'none', cursor: 'pointer' }}
           >
-            View Matrix →
+            View Leads →
           </button>
         </div>
         <div style={{ overflowX: 'auto' }}>
@@ -214,7 +214,7 @@ export default function Dashboard() {
             <tbody>
               {sectors.map((s, i) => (
                 <tr key={i} className="table-row-hover" style={{ borderBottom: '1px solid #1e2530' }}
-                  onClick={() => navigate(`/prospects?sector=${encodeURIComponent(s.gics_sector)}`)}>
+                  onClick={() => navigate(`/leads?sector=${encodeURIComponent(s.gics_sector)}`)}>
                   <td className="px-4 py-2.5 font-mono text-xs font-semibold" style={{ color: '#e2e8f0' }}>{s.gics_sector}</td>
                   <td className="px-4 py-2.5 text-xs" style={{ color: '#8fa3bf' }}>{s.gics_industry_group}</td>
                   <td className="px-4 py-2.5 font-mono text-xs" style={{ color: '#e2e8f0' }}>{s.total_companies}</td>

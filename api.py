@@ -261,8 +261,10 @@ def list_prospects(
     status: Optional[str] = Query(None),
     sector: Optional[str] = Query(None),
     industry: Optional[str] = Query(None),
+    lead_tier: Optional[str] = Query(None),
     min_score: Optional[float] = Query(None),
     min_strong_signals: Optional[int] = Query(None),
+    has_signals: Optional[bool] = Query(None),
     search: Optional[str] = Query(None),
     watchlist: Optional[bool] = Query(None),
     sort_by: str = Query("prospect_score"),
@@ -286,6 +288,9 @@ def list_prospects(
             if industry:
                 where_clauses.append("l.gics_industry_group = %s")
                 where_params.append(industry)
+            if lead_tier:
+                where_clauses.append("pm.lead_tier = %s")
+                where_params.append(lead_tier)
             if min_score is not None:
                 where_clauses.append("pm.prospect_score >= %s")
                 where_params.append(min_score)
@@ -302,6 +307,8 @@ def list_prospects(
                     "COUNT(ps.id) FILTER (WHERE ps.strength = 'strong') >= %s"
                 )
                 having_params.append(min_strong_signals)
+            if has_signals:
+                having_clauses.append("COUNT(ps.id) > 0")
 
             where_sql = " AND ".join(where_clauses)
             having_sql = f"HAVING {' AND '.join(having_clauses)}" if having_clauses else ""
@@ -309,6 +316,7 @@ def list_prospects(
             valid_sorts = {
                 "prospect_score", "company_name", "ticker", "market_cap_aud",
                 "status", "updated_at", "total_signals", "likelihood_score",
+                "lead_tier",
             }
             if sort_by not in valid_sorts:
                 sort_by = "prospect_score"
@@ -328,6 +336,7 @@ def list_prospects(
                     pm.status,
                     pm.is_watchlisted,
                     pm.prospect_score,
+                    pm.lead_tier,
                     pm.strategic_direction,
                     pm.primary_tailwind,
                     pm.primary_headwind,
@@ -339,7 +348,16 @@ def list_prospects(
                     pm.updated_at,
                     COUNT(ps.id) AS total_signals,
                     COUNT(ps.id) FILTER (WHERE ps.strength = 'strong') AS strong_signals,
-                    MODE() WITHIN GROUP (ORDER BY ps.pressure_type::text) AS dominant_pressure_type
+                    COUNT(ps.id) FILTER (WHERE ps.pressure_type::text = 'production') AS sig_production,
+                    COUNT(ps.id) FILTER (WHERE ps.pressure_type::text = 'license_to_operate') AS sig_license,
+                    COUNT(ps.id) FILTER (WHERE ps.pressure_type::text = 'cost') AS sig_cost,
+                    COUNT(ps.id) FILTER (WHERE ps.pressure_type::text = 'people') AS sig_people,
+                    COUNT(ps.id) FILTER (WHERE ps.pressure_type::text = 'quality') AS sig_quality,
+                    COUNT(ps.id) FILTER (WHERE ps.pressure_type::text = 'future_readiness') AS sig_future,
+                    (SELECT ps2.summary FROM pressure_signals ps2
+                     WHERE ps2.prospect_id = pm.id
+                     ORDER BY CASE ps2.strength WHEN 'strong' THEN 1 WHEN 'moderate' THEN 2 ELSE 3 END,
+                              ps2.detected_at DESC LIMIT 1) AS top_signal
                 FROM prospect_matrix pm
                 JOIN asx_listings l ON l.id = pm.listing_id
                 LEFT JOIN pressure_signals ps ON ps.prospect_id = pm.id
@@ -386,8 +404,10 @@ def export_prospects_csv(
     status: Optional[str] = Query(None),
     sector: Optional[str] = Query(None),
     industry: Optional[str] = Query(None),
+    lead_tier: Optional[str] = Query(None),
     min_score: Optional[float] = Query(None),
     min_strong_signals: Optional[int] = Query(None),
+    has_signals: Optional[bool] = Query(None),
     search: Optional[str] = Query(None),
     watchlist: Optional[bool] = Query(None),
 ):
@@ -406,6 +426,9 @@ def export_prospects_csv(
             if industry:
                 where_clauses.append("l.gics_industry_group = %s")
                 where_params.append(industry)
+            if lead_tier:
+                where_clauses.append("pm.lead_tier = %s")
+                where_params.append(lead_tier)
             if min_score is not None:
                 where_clauses.append("pm.prospect_score >= %s")
                 where_params.append(min_score)
@@ -422,9 +445,18 @@ def export_prospects_csv(
                     "COUNT(ps.id) FILTER (WHERE ps.strength = 'strong') >= %s"
                 )
                 having_params.append(min_strong_signals)
+            if has_signals:
+                having_clauses.append("COUNT(ps.id) > 0")
 
             where_sql = " AND ".join(where_clauses)
             having_sql = f"HAVING {' AND '.join(having_clauses)}" if having_clauses else ""
+
+            # Subquery for per-pillar top signal text
+            pillar_top_sql = """
+                (SELECT ps2.summary FROM pressure_signals ps2
+                 WHERE ps2.prospect_id = pm.id AND ps2.pressure_type::text = '{pt}'
+                 ORDER BY CASE ps2.strength WHEN 'strong' THEN 1 WHEN 'moderate' THEN 2 ELSE 3 END
+                 LIMIT 1) AS top_{alias}"""
 
             cur.execute(f"""
                 SELECT
@@ -432,17 +464,26 @@ def export_prospects_csv(
                     l.company_name,
                     l.gics_sector,
                     l.gics_industry_group,
+                    l.market_cap_aud,
+                    pm.lead_tier,
                     pm.status,
                     pm.prospect_score,
-                    pm.likelihood_score,
                     COUNT(ps.id) AS total_signals,
-                    COUNT(ps.id) FILTER (WHERE ps.strength = 'strong') AS strong_signals,
-                    MODE() WITHIN GROUP (ORDER BY ps.pressure_type::text) AS dominant_pressure_type,
-                    pm.strategic_direction,
-                    pm.primary_headwind,
-                    pm.primary_tailwind,
-                    pm.primary_buyer_name,
-                    pm.network_path,
+                    COUNT(ps.id) FILTER (WHERE ps.pressure_type::text = 'production') AS sig_production,
+                    COUNT(ps.id) FILTER (WHERE ps.pressure_type::text = 'license_to_operate') AS sig_license,
+                    COUNT(ps.id) FILTER (WHERE ps.pressure_type::text = 'cost') AS sig_cost,
+                    COUNT(ps.id) FILTER (WHERE ps.pressure_type::text = 'people') AS sig_people,
+                    COUNT(ps.id) FILTER (WHERE ps.pressure_type::text = 'quality') AS sig_quality,
+                    COUNT(ps.id) FILTER (WHERE ps.pressure_type::text = 'future_readiness') AS sig_future,
+                    (SELECT ps2.summary FROM pressure_signals ps2
+                     WHERE ps2.prospect_id = pm.id
+                     ORDER BY CASE ps2.strength WHEN 'strong' THEN 1 WHEN 'moderate' THEN 2 ELSE 3 END,
+                              ps2.detected_at DESC LIMIT 1) AS top_signal,
+                    (SELECT ps2.source_title FROM pressure_signals ps2
+                     WHERE ps2.prospect_id = pm.id
+                     ORDER BY CASE ps2.strength WHEN 'strong' THEN 1 WHEN 'moderate' THEN 2 ELSE 3 END,
+                              ps2.detected_at DESC LIMIT 1) AS top_signal_source,
+                    MAX(ps.source_date) AS latest_signal_date,
                     pm.analyst_notes
                 FROM prospect_matrix pm
                 JOIN asx_listings l ON l.id = pm.listing_id
@@ -450,17 +491,27 @@ def export_prospects_csv(
                 WHERE {where_sql}
                 GROUP BY pm.id, l.id
                 {having_sql}
-                ORDER BY pm.prospect_score DESC NULLS LAST
+                ORDER BY
+                    CASE pm.lead_tier WHEN 'hot' THEN 1 WHEN 'warm' THEN 2 WHEN 'watch' THEN 3 ELSE 4 END,
+                    pm.prospect_score DESC NULLS LAST
             """, where_params + having_params)
             rows = cur.fetchall()
+
+        def fmt_cap(cents):
+            if not cents: return ""
+            aud = cents / 100
+            if aud >= 1e9: return f"${aud/1e9:.1f}B"
+            if aud >= 1e6: return f"${aud/1e6:.0f}M"
+            return f"${aud/1e3:.0f}K"
 
         output = io.StringIO()
         writer = csv.writer(output)
         writer.writerow([
-            "Ticker", "Company Name", "Sector", "Industry Group", "Status",
-            "Prospect Score", "Likelihood Score", "Signal Count", "Strong Signals",
-            "Dominant Pressure Type", "Strategic Direction", "Primary Headwind",
-            "Primary Tailwind", "Primary Buyer", "Network Path", "Analyst Notes",
+            "Ticker", "Company Name", "Sector", "Industry Group", "Market Cap",
+            "Lead Tier", "Production", "License to Operate", "Cost", "People",
+            "Quality", "Future Readiness", "Total Signals", "Top Signal",
+            "Top Signal Source", "Latest Signal Date", "Status", "Prospect Score",
+            "Analyst Notes",
         ])
         for row in rows:
             writer.writerow([
@@ -468,17 +519,20 @@ def export_prospects_csv(
                 row["company_name"],
                 row["gics_sector"] or "",
                 row["gics_industry_group"] or "",
+                fmt_cap(row["market_cap_aud"]),
+                (row["lead_tier"] or "not_qualified").replace("_", " ").title(),
+                row["sig_production"],
+                row["sig_license"],
+                row["sig_cost"],
+                row["sig_people"],
+                row["sig_quality"],
+                row["sig_future"],
+                row["total_signals"],
+                row["top_signal"] or "",
+                row["top_signal_source"] or "",
+                row["latest_signal_date"] or "",
                 row["status"],
                 float(row["prospect_score"]) if row["prospect_score"] else "",
-                row["likelihood_score"] or "",
-                row["total_signals"],
-                row["strong_signals"],
-                row["dominant_pressure_type"] or "",
-                row["strategic_direction"] or "",
-                row["primary_headwind"] or "",
-                row["primary_tailwind"] or "",
-                row["primary_buyer_name"] or "",
-                row["network_path"] or "",
                 (row["analyst_notes"] or "").replace("\n", " "),
             ])
 
@@ -486,7 +540,7 @@ def export_prospects_csv(
         return StreamingResponse(
             iter([output.getvalue()]),
             media_type="text/csv",
-            headers={"Content-Disposition": f'attachment; filename="delta_prospects_{today}.csv"'},
+            headers={"Content-Disposition": f'attachment; filename="delta_leads_{today}.csv"'},
         )
     finally:
         put_conn(conn)
@@ -701,7 +755,7 @@ def deep_analysis(prospect_id: str):
 
             # Insert new AI-detected signals
             new_signals = result.get("new_signals", [])
-            valid_pt = {"operational","cost","safety","governance","environmental","market","workforce"}
+            valid_pt = {"production","license_to_operate","cost","people","quality","future_readiness"}
             valid_st = {"weak","moderate","strong"}
             inserted = 0
             for ns in new_signals:
@@ -876,10 +930,14 @@ def get_dashboard_stats():
                     (SELECT COUNT(*) FROM prospect_matrix WHERE status = 'suggested_dq') AS suggested_dq,
                     (SELECT COUNT(*) FROM prospect_matrix WHERE status = 'disqualified') AS disqualified,
                     (SELECT COUNT(*) FROM prospect_matrix WHERE is_watchlisted = TRUE) AS watchlist_count,
+                    (SELECT COUNT(*) FROM prospect_matrix WHERE lead_tier = 'hot') AS hot_leads,
+                    (SELECT COUNT(*) FROM prospect_matrix WHERE lead_tier = 'warm') AS warm_leads,
+                    (SELECT COUNT(*) FROM prospect_matrix WHERE lead_tier = 'watch') AS watch_leads,
                     (SELECT COUNT(*) FROM prospect_matrix WHERE prospect_score >= 7) AS high_score_count,
                     (SELECT COUNT(DISTINCT prospect_id) FROM pressure_signals WHERE strength = 'strong') AS strong_signal_companies,
                     (SELECT COUNT(*) FROM pressure_signals) AS total_signals,
                     (SELECT COUNT(*) FROM pressure_signals WHERE strength = 'strong') AS strong_signals,
+                    (SELECT COUNT(DISTINCT prospect_id) FROM pressure_signals) AS has_signals_count,
                     (SELECT MAX(started_at) FROM refresh_runs WHERE status = 'completed') AS last_refresh,
                     (SELECT ROUND(AVG(prospect_score)::numeric, 2) FROM prospect_matrix WHERE prospect_score IS NOT NULL) AS avg_score
             """)

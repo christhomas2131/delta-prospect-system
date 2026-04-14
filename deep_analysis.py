@@ -67,7 +67,7 @@ Respond with valid JSON only — no markdown fences, no explanation outside the 
   ],
   "new_signals": [
     {{
-      "pressure_type": "operational|cost|safety|governance|environmental|market|workforce",
+      "pressure_type": "production|license_to_operate|cost|people|quality|future_readiness",
       "strength": "strong|moderate|weak",
       "summary": "concise one-sentence description of the pressure",
       "reasoning": "what in the announcements led to this signal",
