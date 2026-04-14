@@ -984,8 +984,9 @@ def trigger_enrichment(ticker: str, background_tasks: BackgroundTasks):
 
 
 def _run_batch_with_progress():
-    """Wrapper around enrichment run_batch that tracks progress."""
-    from enrichment_agent import get_conn as enrich_conn, get_prospects, detect_signals, generate_profile, save_results
+    """Wrapper around enrichment run_batch that tracks progress.
+    Processes ALL target sector companies, not just unscreened/qualified."""
+    from enrichment_agent import get_conn as enrich_conn, detect_signals, generate_profile, save_results
     from asx_browser import ASXFetcher
     import time as _time
 
@@ -998,7 +999,16 @@ def _run_batch_with_progress():
 
     conn = enrich_conn()
     try:
-        prospects = get_prospects(conn)
+        # Fetch ALL prospects (not just unscreened) so re-enrichment works
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("""
+                SELECT pm.id prospect_id, pm.status, l.id listing_id,
+                       l.ticker, l.company_name, l.gics_sector
+                FROM prospect_matrix pm JOIN asx_listings l ON l.id=pm.listing_id
+                WHERE l.is_active=TRUE AND l.is_target_sector=TRUE
+                ORDER BY l.market_cap_aud DESC NULLS LAST
+            """)
+            prospects = cur.fetchall()
         _enrich_progress["total"] = len(prospects)
         logger.info(f"Batch enrichment started: {len(prospects)} prospects")
 
@@ -1030,26 +1040,28 @@ def _run_batch_with_progress():
 
 @app.post("/api/enrich/batch")
 def trigger_batch_enrichment(background_tasks: BackgroundTasks):
-    """Trigger batch enrichment for all unscreened/qualified prospects (runs in background)."""
+    """Trigger batch enrichment for ALL target sector prospects (runs in background)."""
     if _enrich_progress["running"]:
         return {"message": "Enrichment already running", "count": _enrich_progress["total"], "running": True}
 
-    # Count how many will be processed
+    # Count all target sector prospects
     conn = get_conn()
     try:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT COUNT(*) FROM prospect_matrix WHERE status IN ('unscreened', 'qualified')"
+                "SELECT COUNT(*) FROM prospect_matrix pm "
+                "JOIN asx_listings l ON l.id = pm.listing_id "
+                "WHERE l.is_active = TRUE AND l.is_target_sector = TRUE"
             )
             count = cur.fetchone()[0]
     finally:
         put_conn(conn)
 
     if count == 0:
-        return {"message": "No unscreened or qualified prospects to enrich", "count": 0}
+        return {"message": "No target sector prospects to enrich", "count": 0}
 
     background_tasks.add_task(_run_batch_with_progress)
-    return {"message": f"Batch enrichment started for {count} prospects", "count": count}
+    return {"message": f"Enrichment started for {count} companies", "count": count}
 
 
 @app.get("/api/enrich/status")
