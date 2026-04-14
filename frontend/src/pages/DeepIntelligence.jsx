@@ -551,10 +551,21 @@ export default function DeepIntelligence() {
               style={{ borderBottom: '1px solid #1e2530' }}
               onMouseEnter={e => { e.currentTarget.style.background = '#161b24' }}
               onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
-              onClick={() => {
+              onClick={async () => {
                 setQuery('')
                 setSearchResults([])
-                navigate(`/deep-intelligence/${r.id}`)
+                // Search API returns listing id, but we need prospect_id
+                // Look it up via the prospects endpoint
+                try {
+                  const res = await fetch(`/api/prospects?search=${encodeURIComponent(r.ticker)}&limit=1`)
+                  const d = await res.json()
+                  if (d.data && d.data.length > 0) {
+                    navigate(`/deep-intelligence/${d.data[0].prospect_id}`)
+                  }
+                } catch {
+                  // fallback — navigate and let the detail view show an error
+                  navigate(`/deep-intelligence/${r.id}`)
+                }
               }}
             >
               <div className="flex items-center gap-3">
@@ -643,10 +654,10 @@ export default function DeepIntelligence() {
                 const scoreColor = score >= 15 ? '#22c55e' : score >= 8 ? '#eab308' : '#3b82f6'
                 return (
                   <div
-                    key={p.id}
+                    key={p.prospect_id}
                     className="card p-4 cursor-pointer transition-all"
                     style={{ borderLeft: `3px solid ${scoreColor}` }}
-                    onClick={() => navigate(`/deep-intelligence/${p.id}`)}
+                    onClick={() => navigate(`/deep-intelligence/${p.prospect_id}`)}
                     onMouseEnter={e => { e.currentTarget.style.background = '#161b24' }}
                     onMouseLeave={e => { e.currentTarget.style.background = '#111418' }}
                   >
@@ -664,7 +675,7 @@ export default function DeepIntelligence() {
                     <div className="text-sm mb-1" style={{ color: '#e2e8f0' }}>{p.company_name}</div>
                     <div className="font-mono text-xs" style={{ color: '#4a5a70' }}>
                       {p.gics_sector}
-                      {p.signal_count != null && <span> \u00b7 {p.signal_count} signals</span>}
+                      {p.signal_count != null && <span> · {p.total_signals} signals</span>}
                     </div>
                   </div>
                 )
@@ -683,7 +694,7 @@ export default function DeepIntelligence() {
       <div className="p-6 max-w-5xl">
         <button onClick={() => navigate('/deep-intelligence')} className="font-mono text-xs mb-4 flex items-center gap-1"
           style={{ background: 'none', border: 'none', color: '#8fa3bf', cursor: 'pointer' }}>
-          \u2190 Back to Deep Intelligence
+          ← Back to Deep Intelligence
         </button>
         {searchBar}
         <div className="font-mono text-xs" style={{ color: '#4a5a70' }}>Loading prospect...</div>
@@ -696,7 +707,7 @@ export default function DeepIntelligence() {
       <div className="p-6 max-w-5xl">
         <button onClick={() => navigate('/deep-intelligence')} className="font-mono text-xs mb-4 flex items-center gap-1"
           style={{ background: 'none', border: 'none', color: '#8fa3bf', cursor: 'pointer' }}>
-          \u2190 Back to Deep Intelligence
+          ← Back to Deep Intelligence
         </button>
         {searchBar}
         <div className="card p-6 text-center" style={{ borderLeft: '3px solid #ef4444' }}>
@@ -715,7 +726,7 @@ export default function DeepIntelligence() {
       <div className="p-6 max-w-5xl">
         <button onClick={() => navigate('/deep-intelligence')} className="font-mono text-xs mb-4 flex items-center gap-1"
           style={{ background: 'none', border: 'none', color: '#8fa3bf', cursor: 'pointer' }}>
-          \u2190 Back to Deep Intelligence
+          ← Back to Deep Intelligence
         </button>
         {searchBar}
         <div className="font-mono text-xs" style={{ color: '#ef4444' }}>Prospect not found.</div>
@@ -728,7 +739,7 @@ export default function DeepIntelligence() {
       {/* Back button */}
       <button onClick={() => navigate('/deep-intelligence')} className="font-mono text-xs mb-4 flex items-center gap-1"
         style={{ background: 'none', border: 'none', color: '#8fa3bf', cursor: 'pointer' }}>
-        \u2190 Back to Deep Intelligence
+        ← Back to Deep Intelligence
       </button>
 
       {/* Search bar */}
@@ -758,8 +769,8 @@ export default function DeepIntelligence() {
             <div className="text-lg font-semibold mb-1" style={{ color: '#e2e8f0' }}>{prospect.company_name}</div>
             <div className="font-mono text-xs" style={{ color: '#8fa3bf' }}>
               {prospect.gics_sector}
-              {prospect.gics_industry_group && <span> \u00b7 {prospect.gics_industry_group}</span>}
-              {prospect.market_cap_aud && <span> \u00b7 {fmtMarketCap(prospect.market_cap_aud)} AUD</span>}
+              {prospect.gics_industry_group && <span> · {prospect.gics_industry_group}</span>}
+              {prospect.market_cap_aud && <span> · {fmtMarketCap(prospect.market_cap_aud)} AUD</span>}
               {prospect.website && (
                 <a href={prospect.website.startsWith('http') ? prospect.website : `https://${prospect.website}`}
                   target="_blank" rel="noopener noreferrer"
@@ -932,7 +943,7 @@ export default function DeepIntelligence() {
         </div>
         {signals.length === 0 ? (
           <div className="px-4 py-6 font-mono text-xs text-center" style={{ color: '#4a5a70' }}>
-            No signals detected \u2014 run enrichment to analyse ASX announcements
+            No signals detected — run enrichment to analyse ASX announcements
           </div>
         ) : (
           <div style={{ overflowX: 'auto' }}>
