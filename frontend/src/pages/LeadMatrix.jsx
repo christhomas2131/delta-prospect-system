@@ -313,13 +313,13 @@ export default function LeadMatrix({ watchlistOnly = false }) {
               className="font-mono text-xs px-3 py-1.5 flex items-center gap-1.5"
               style={{
                 background: 'none',
-                border: '1px solid #1e2530',
-                color: '#4a5a70',
+                border: '1px solid #2d3a4d',
+                color: '#8fa3bf',
                 textDecoration: 'none',
                 cursor: 'pointer',
               }}
-              onMouseEnter={e => { e.currentTarget.style.borderColor = '#2d3a4d'; e.currentTarget.style.color = '#8fa3bf' }}
-              onMouseLeave={e => { e.currentTarget.style.borderColor = '#1e2530'; e.currentTarget.style.color = '#4a5a70' }}
+              onMouseEnter={e => { e.currentTarget.style.borderColor = '#4a5a70'; e.currentTarget.style.color = '#e2e8f0' }}
+              onMouseLeave={e => { e.currentTarget.style.borderColor = '#2d3a4d'; e.currentTarget.style.color = '#8fa3bf' }}
             >
               ↓ Export CSV
             </a>
