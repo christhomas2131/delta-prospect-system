@@ -374,7 +374,11 @@ def list_prospects(
                     (SELECT ps2.summary FROM pressure_signals ps2
                      WHERE ps2.prospect_id = pm.id
                      ORDER BY CASE ps2.strength WHEN 'strong' THEN 1 WHEN 'moderate' THEN 2 ELSE 3 END,
-                              ps2.detected_at DESC LIMIT 1) AS top_signal
+                              ps2.detected_at DESC LIMIT 1) AS top_signal,
+                    (SELECT ps2.source_url FROM pressure_signals ps2
+                     WHERE ps2.prospect_id = pm.id
+                     ORDER BY CASE ps2.strength WHEN 'strong' THEN 1 WHEN 'moderate' THEN 2 ELSE 3 END,
+                              ps2.detected_at DESC LIMIT 1) AS top_signal_url
                 FROM prospect_matrix pm
                 JOIN asx_listings l ON l.id = pm.listing_id
                 LEFT JOIN pressure_signals ps ON ps.prospect_id = pm.id
@@ -1203,6 +1207,44 @@ def get_enrichment_status():
         "skip": _enrich_progress["skip"],
         "fail": _enrich_progress["fail"],
     }
+
+
+@app.get("/api/signals/{signal_id}/source-pdf")
+def get_signal_source_pdf(signal_id: str):
+    """Fetch the ASX announcement page and return it as a PDF via Playwright."""
+    conn = get_conn()
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT source_url, source_title FROM pressure_signals WHERE id = %s", (signal_id,))
+            row = cur.fetchone()
+            if not row:
+                raise HTTPException(status_code=404, detail="Signal not found")
+            if not row["source_url"] or row["source_url"].startswith("claude-deep://"):
+                raise HTTPException(status_code=400, detail="No ASX source URL available for this signal")
+    finally:
+        put_conn(conn)
+
+    source_url = row["source_url"]
+    title = (row["source_title"] or "announcement").replace(" ", "_")[:50]
+
+    try:
+        from playwright.sync_api import sync_playwright
+        with sync_playwright() as pw:
+            browser = pw.chromium.launch(headless=True)
+            page = browser.new_page()
+            page.goto(source_url, wait_until="networkidle", timeout=15000)
+            pdf_bytes = page.pdf(format="A4", print_background=True)
+            browser.close()
+    except Exception as e:
+        logger.error("PDF generation failed for %s: %s", source_url, e)
+        raise HTTPException(status_code=500, detail=f"PDF generation failed: {e}")
+
+    from fastapi.responses import Response
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{title}.pdf"'},
+    )
 
 
 @app.post("/api/enrich/{ticker}")

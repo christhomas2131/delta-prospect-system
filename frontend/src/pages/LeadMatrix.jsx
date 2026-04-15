@@ -501,11 +501,20 @@ export default function LeadMatrix({ watchlistOnly = false }) {
                         {p.total_signals > 0 ? p.total_signals : '—'}
                       </td>
                       {/* Top Signal */}
-                      <td className="px-4 py-2.5 text-xs" style={{ color: '#8fa3bf', maxWidth: 240 }}>
+                      <td className="px-4 py-2.5 text-xs" style={{ color: '#8fa3bf', maxWidth: 260 }}>
                         {topSig ? (
-                          <span title={topSig.length > 60 ? topSig : undefined}>
-                            {topSigTruncated}
-                          </span>
+                          <div className="flex items-center gap-1.5">
+                            <span title={topSig.length > 60 ? topSig : undefined} style={{ flex: 1 }}>
+                              {topSigTruncated}
+                            </span>
+                            {p.top_signal_url && !p.top_signal_url.startsWith('claude-deep://') && (
+                              <a href={p.top_signal_url} target="_blank" rel="noopener noreferrer"
+                                onClick={e => e.stopPropagation()}
+                                title="Open source announcement"
+                                className="font-mono text-xs"
+                                style={{ color: '#1e6fd4', textDecoration: 'none', flexShrink: 0 }}>↗</a>
+                            )}
+                          </div>
                         ) : '—'}
                       </td>
                     </tr>

@@ -323,6 +323,7 @@ export default function DeepIntelligence() {
   const [deepAvailable, setDeepAvailable] = useState(false)
   const [lastDeepAt, setLastDeepAt] = useState(null)
   const [isWatchlisted, setIsWatchlisted] = useState(false)
+  const [pdfLoading, setPdfLoading] = useState(null) // signal ID being exported
 
   const showToast = (ok, msg) => {
     setToast({ ok, msg })
@@ -497,6 +498,54 @@ export default function DeepIntelligence() {
 
     navigator.clipboard.writeText(brief)
     showToast(true, 'Brief copied to clipboard')
+  }
+
+  const downloadSources = () => {
+    if (!prospect || signals.length === 0) return
+    const rows = [['Ticker', 'Signal', 'Pillar', 'Strength', 'Source Title', 'Source URL', 'Date']]
+    signals.forEach(s => {
+      rows.push([
+        prospect.ticker,
+        (s.summary || '').replace(/"/g, '""'),
+        s.pressure_type,
+        s.strength,
+        (s.source_title || '').replace(/"/g, '""'),
+        s.source_url || '',
+        s.source_date || '',
+      ])
+    })
+    const csv = rows.map(r => r.map(c => `"${c}"`).join(',')).join('\n')
+    const blob = new Blob([csv], { type: 'text/csv' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${prospect.ticker}_sources.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+    showToast(true, 'Sources CSV downloaded')
+  }
+
+  const exportSignalPdf = async (signalId) => {
+    setPdfLoading(signalId)
+    try {
+      const r = await fetch(`/api/signals/${signalId}/source-pdf`)
+      if (!r.ok) {
+        const d = await r.json().catch(() => ({ detail: 'PDF export failed' }))
+        showToast(false, d.detail || 'PDF export failed')
+        setPdfLoading(null)
+        return
+      }
+      const blob = await r.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = 'announcement.pdf'
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch {
+      showToast(false, 'PDF export failed — network error')
+    }
+    setPdfLoading(null)
   }
 
   const hasAISignals = signals.some(
@@ -795,14 +844,26 @@ export default function DeepIntelligence() {
             {hasAISignals && (
               <div className="font-mono text-xs mt-1" style={{ color: GOLD }}>{'\u25C6'} AI Enhanced</div>
             )}
-            <button onClick={copyBrief}
-              className="font-mono text-xs px-3 py-1.5 mt-2"
-              style={{ background: 'none', border: '1px solid #1e2530', color: '#8fa3bf', cursor: 'pointer' }}
-              onMouseEnter={e => { e.currentTarget.style.borderColor = '#2d3a4d'; e.currentTarget.style.color = '#e2e8f0' }}
-              onMouseLeave={e => { e.currentTarget.style.borderColor = '#1e2530'; e.currentTarget.style.color = '#8fa3bf' }}
-            >
-              {'\u29C9'} Copy Brief
-            </button>
+            <div className="flex gap-2 mt-2">
+              <button onClick={copyBrief}
+                className="font-mono text-xs px-3 py-1.5"
+                style={{ background: 'none', border: '1px solid #1e2530', color: '#8fa3bf', cursor: 'pointer' }}
+                onMouseEnter={e => { e.currentTarget.style.borderColor = '#2d3a4d'; e.currentTarget.style.color = '#e2e8f0' }}
+                onMouseLeave={e => { e.currentTarget.style.borderColor = '#1e2530'; e.currentTarget.style.color = '#8fa3bf' }}
+              >
+                Copy Brief
+              </button>
+              {signals.length > 0 && (
+                <button onClick={downloadSources}
+                  className="font-mono text-xs px-3 py-1.5"
+                  style={{ background: 'none', border: '1px solid #1e2530', color: '#8fa3bf', cursor: 'pointer' }}
+                  onMouseEnter={e => { e.currentTarget.style.borderColor = '#2d3a4d'; e.currentTarget.style.color = '#e2e8f0' }}
+                  onMouseLeave={e => { e.currentTarget.style.borderColor = '#1e2530'; e.currentTarget.style.color = '#8fa3bf' }}
+                >
+                  Download Sources
+                </button>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -950,8 +1011,8 @@ export default function DeepIntelligence() {
             <table className="w-full" style={{ minWidth: 700 }}>
               <thead>
                 <tr style={{ borderBottom: '1px solid #1e2530' }}>
-                  {['Pillar', 'Strength', 'Summary', 'Source', 'Confidence', 'Date'].map(h => (
-                    <th key={h} className="px-4 py-2.5 text-left font-mono text-xs uppercase" style={{ color: '#4a5a70' }}>{h}</th>
+                  {['Pillar', 'Strength', 'Summary', 'Source', 'Confidence', 'Date', ''].map(h => (
+                    <th key={h || 'actions'} className="px-4 py-2.5 text-left font-mono text-xs uppercase" style={{ color: '#4a5a70' }}>{h}</th>
                   ))}
                 </tr>
               </thead>
@@ -992,6 +1053,47 @@ export default function DeepIntelligence() {
                       </td>
                       <td className="px-4 py-2.5 font-mono text-xs" style={{ color: '#4a5a70' }}>
                         {s.source_date || '\u2014'}
+                      </td>
+                      <td className="px-4 py-2.5">
+                        <div className="flex items-center gap-1">
+                          {/* Open source in new tab */}
+                          {s.source_url && !s.source_url.startsWith('claude-deep://') ? (
+                            <a href={s.source_url} target="_blank" rel="noopener noreferrer"
+                              title="Open source announcement"
+                              className="font-mono text-xs px-1.5 py-0.5"
+                              style={{ color: '#1e6fd4', border: '1px solid #1e2530', cursor: 'pointer', textDecoration: 'none' }}
+                              onMouseEnter={e => { e.currentTarget.style.borderColor = '#1e6fd4' }}
+                              onMouseLeave={e => { e.currentTarget.style.borderColor = '#1e2530' }}
+                            >↗</a>
+                          ) : (
+                            <span className="font-mono text-xs px-1.5 py-0.5" style={{ color: '#2d3a4d', border: '1px solid #1e2530' }} title="Source not available">↗</span>
+                          )}
+                          {/* Export as PDF */}
+                          {s.source_url && !s.source_url.startsWith('claude-deep://') ? (
+                            <button
+                              onClick={() => exportSignalPdf(s.id)}
+                              disabled={pdfLoading === s.id}
+                              title="Export source as PDF"
+                              className="font-mono text-xs px-1.5 py-0.5"
+                              style={{ color: pdfLoading === s.id ? '#4a5a70' : '#8fa3bf', border: '1px solid #1e2530', background: 'none', cursor: pdfLoading === s.id ? 'wait' : 'pointer' }}
+                              onMouseEnter={e => { if (pdfLoading !== s.id) e.currentTarget.style.borderColor = '#8fa3bf' }}
+                              onMouseLeave={e => { e.currentTarget.style.borderColor = '#1e2530' }}
+                            >{pdfLoading === s.id ? '...' : 'PDF'}</button>
+                          ) : (
+                            <span className="font-mono text-xs px-1.5 py-0.5" style={{ color: '#2d3a4d', border: '1px solid #1e2530' }} title="No source URL">PDF</span>
+                          )}
+                          {/* Copy source URL */}
+                          {s.source_url && !s.source_url.startsWith('claude-deep://') && (
+                            <button
+                              onClick={() => { navigator.clipboard.writeText(s.source_url); showToast(true, 'Source URL copied') }}
+                              title="Copy source URL"
+                              className="font-mono text-xs px-1.5 py-0.5"
+                              style={{ color: '#8fa3bf', border: '1px solid #1e2530', background: 'none', cursor: 'pointer' }}
+                              onMouseEnter={e => { e.currentTarget.style.borderColor = '#8fa3bf' }}
+                              onMouseLeave={e => { e.currentTarget.style.borderColor = '#1e2530' }}
+                            >URL</button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   )
