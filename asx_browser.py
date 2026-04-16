@@ -46,8 +46,8 @@ MARKIT_HEADERS = {
     ),
 }
 
-# ASX document URL pattern — constructed from documentKey in the response
-ASX_DOC_URL  = "https://www.asx.com.au/asx/statistics/displayAnnouncement.do?display=pdf&idsId={key}"
+# ASX document URL — direct PDF download via Markit CDN (confirmed working)
+ASX_DOC_URL  = "https://cdn-api.markitdigital.com/apiman-gateway/ASX/asx-research/1.0/file/{key}?access_token=" + MARKIT_TOKEN
 
 HTTP_TIMEOUT = 15
 BETWEEN_REQUESTS = 2.0
