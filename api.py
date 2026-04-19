@@ -285,6 +285,8 @@ def list_prospects(
     has_signals: Optional[bool] = Query(None),
     search: Optional[str] = Query(None),
     watchlist: Optional[bool] = Query(None),
+    australia_only: bool = Query(False),
+    city: Optional[str] = Query(None, description="Comma-separated city names to filter"),
     sort_by: str = Query("prospect_score"),
     sort_dir: str = Query("desc"),
     limit: int = Query(50, ge=1, le=500),
@@ -315,6 +317,14 @@ def list_prospects(
             if min_prize is not None:
                 where_clauses.append("pm.size_of_prize >= %s")
                 where_params.append(min_prize)
+            if australia_only:
+                where_clauses.append("pm.in_australia = TRUE")
+            if city:
+                cities = [c.strip() for c in city.split(",") if c.strip()]
+                if cities:
+                    placeholders = ",".join(["%s"] * len(cities))
+                    where_clauses.append(f"pm.registered_city IN ({placeholders})")
+                    where_params.extend(cities)
             if search:
                 where_clauses.append("(l.company_name ILIKE %s OR l.ticker ILIKE %s)")
                 where_params.extend([f"%{search}%", f"%{search}%"])
@@ -337,7 +347,7 @@ def list_prospects(
             valid_sorts = {
                 "prospect_score", "company_name", "ticker", "market_cap_aud",
                 "status", "updated_at", "total_signals", "likelihood_score",
-                "lead_tier", "size_of_prize", "accessibility_score",
+                "lead_tier", "size_of_prize",
             }
             if sort_by not in valid_sorts:
                 sort_by = "prospect_score"
@@ -367,7 +377,9 @@ def list_prospects(
                     pm.network_path,
                     pm.analyst_notes,
                     pm.updated_at,
-                    pm.accessibility_score,
+                    pm.registered_city,
+                    pm.registered_state,
+                    pm.in_australia,
                     pm.size_of_prize,
                     COUNT(ps.id) AS total_signals,
                     COUNT(ps.id) FILTER (WHERE ps.strength = 'strong') AS strong_signals,
@@ -516,7 +528,8 @@ def export_prospects_csv(
                               ps2.detected_at DESC LIMIT 1) AS top_signal_url,
                     MAX(ps.source_date) AS latest_signal_date,
                     pm.analyst_notes,
-                    pm.accessibility_score,
+                    pm.registered_city,
+                    pm.registered_state,
                     pm.size_of_prize
                 FROM prospect_matrix pm
                 JOIN asx_listings l ON l.id = pm.listing_id
@@ -550,8 +563,8 @@ def export_prospects_csv(
             "Lead Tier", "Production", "License to Operate", "Cost", "People",
             "Quality", "Future Readiness", "Total Signals", "Top Signal",
             "Source Announcement", "Source URL", "Latest Signal Date",
-            "Status", "Prospect Score", "Accessibility Score",
-            "Est. Impact (USD)", "Deal Fit", "Analyst Notes",
+            "Status", "Prospect Score", "City", "State",
+            "Est. Impact ($)", "Deal Fit", "Analyst Notes",
         ])
         for row in rows:
             writer.writerow([
@@ -574,7 +587,8 @@ def export_prospects_csv(
                 row["latest_signal_date"] or "",
                 row["status"],
                 float(row["prospect_score"]) if row["prospect_score"] else "",
-                row["accessibility_score"] if row["accessibility_score"] is not None else 5,
+                row["registered_city"] or "",
+                row["registered_state"] or "",
                 row["size_of_prize"] or "",
                 deal_fit(row["size_of_prize"]),
                 (row["analyst_notes"] or "").replace("\n", " "),
@@ -751,7 +765,8 @@ def deep_analysis(prospect_id: str):
     try:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute("""
-                SELECT pm.id, pm.listing_id, l.ticker, l.company_name, l.gics_sector
+                SELECT pm.id, pm.listing_id, pm.size_of_prize, pm.prize_breakdown,
+                       l.ticker, l.company_name, l.gics_sector
                 FROM prospect_matrix pm
                 JOIN asx_listings l ON l.id = pm.listing_id
                 WHERE pm.id = %s
@@ -767,6 +782,13 @@ def deep_analysis(prospect_id: str):
             """, (prospect_id,))
             existing_signals = list(cur.fetchall())
 
+        # Extract deal_fit from prize_breakdown JSONB
+        pb = prospect.get("prize_breakdown") or {}
+        if isinstance(pb, str):
+            import json as _json
+            pb = _json.loads(pb)
+        _deal_fit = pb.get("deal_fit", "") if isinstance(pb, dict) else ""
+
         from deep_analysis import run_deep_analysis as _run_deep
         result = _run_deep(
             prospect_id=prospect_id,
@@ -775,6 +797,8 @@ def deep_analysis(prospect_id: str):
             sector=prospect["gics_sector"],
             existing_signals=existing_signals,
             api_key=_api_key_store["key"],
+            size_of_prize=int(prospect.get("size_of_prize") or 0),
+            deal_fit=_deal_fit,
         )
 
         if "error" in result:
@@ -832,22 +856,33 @@ def deep_analysis(prospect_id: str):
                 except Exception as exc:
                     logger.error("Failed to insert AI signal: %s", exc)
 
-            # Update strategic profile
+            # Update strategic profile + extended deep analysis fields
             profile = result.get("refined_profile", {})
             if profile:
                 lk = max(1, min(10, int(profile.get("likelihood_score") or 5)))
                 cur.execute("""
                     UPDATE prospect_matrix SET
-                        strategic_direction = COALESCE(%s, strategic_direction),
-                        primary_tailwind    = COALESCE(%s, primary_tailwind),
-                        primary_headwind    = COALESCE(%s, primary_headwind),
-                        likelihood_score    = %s
+                        strategic_direction  = COALESCE(%s, strategic_direction),
+                        primary_tailwind     = COALESCE(%s, primary_tailwind),
+                        primary_headwind     = COALESCE(%s, primary_headwind),
+                        likelihood_score     = %s,
+                        key_pressures        = COALESCE(%s, key_pressures),
+                        nd_fit_assessment    = COALESCE(%s, nd_fit_assessment),
+                        outreach_hypothesis  = COALESCE(%s, outreach_hypothesis),
+                        red_flags            = COALESCE(%s, red_flags),
+                        prize_ai_assessment  = COALESCE(%s, prize_ai_assessment)
                     WHERE id = %s
                 """, (
                     profile.get("strategic_direction"),
                     profile.get("primary_tailwind"),
                     profile.get("primary_headwind"),
-                    lk, prospect_id,
+                    lk,
+                    profile.get("key_pressures"),
+                    profile.get("nd_fit_assessment"),
+                    result.get("outreach_hypothesis"),
+                    result.get("red_flags"),
+                    result.get("prize_assessment"),
+                    prospect_id,
                 ))
 
             # Recalculate score

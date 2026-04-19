@@ -1,11 +1,11 @@
 """
-deep_analysis.py — Claude-Powered Pressure Signal Enhancement
-=============================================================
-Premium enrichment layer that uses the Claude API to validate rule-based
-signals, detect missed signals, and generate refined strategic profiles.
+deep_analysis.py — Claude-Powered Deep Intelligence
+=====================================================
+Premium enrichment layer that uses the Claude API to produce rich,
+actionable intelligence for New Delta's business development team.
 
-Runs on top of the existing rule-based enrichment engine (enrichment_agent.py).
-Requires an Anthropic API key (~$0.01-0.03 per company).
+Runs on top of the existing rule-based enrichment engine.
+Requires an Anthropic API key (~$0.03-0.05 per company).
 
 Usage (via API):
     POST /api/prospects/{id}/deep-analysis
@@ -21,46 +21,57 @@ from asx_browser import ASXFetcher
 logger = logging.getLogger("deep_analysis")
 
 SYSTEM_PROMPT = (
-    "You are an expert industrial analyst specialising in ASX-listed mining, energy, "
-    "and heavy industry companies. You identify subtle operational, financial, safety, "
-    "governance, environmental, market, and workforce pressures from public disclosures. "
-    "Be precise, evidence-based, and commercially minded."
+    "You are a management consulting analyst specialising in mining, energy, and heavy industry "
+    "in Australia. You are working for New Delta, a boutique operational consulting firm based "
+    "in Brisbane that helps ASX-listed industrial companies solve Production, License to Operate, "
+    "Cost, People, Quality, and Future Readiness challenges. "
+    "Be direct, specific, and commercially minded. Reference actual announcements, not generic "
+    "industry trends. This analysis is for internal use by New Delta's business development team."
 )
 
 
-def _build_prompt(company_name: str, ticker: str, sector: str,
-                  existing_signals: list, announcements: list) -> str:
+def _build_prompt(
+    company_name: str,
+    ticker: str,
+    sector: str,
+    existing_signals: list,
+    announcements: list,
+    size_of_prize: int = 0,
+    deal_fit: str = "",
+) -> str:
     ann_lines = "\n".join(
-        f"  [{a.get('date', '?')}] {a.get('title', '')}"
+        f"  [{a.get('date', '?')[:10]}] {a.get('title', '')}"
         for a in announcements
     ) or "  (none available)"
 
     if existing_signals:
         sig_lines = "\n".join(
-            f"  [{i}] {s.get('pressure_type','?')}/{s.get('strength','?')}: {s.get('summary','')}"
+            f"  [{i}] {s.get('pressure_type','?')}/{s.get('strength','?')}: {s.get('summary','')} "
+            f"(source: {s.get('source_title','?')})"
             for i, s in enumerate(existing_signals)
         )
     else:
         sig_lines = "  (none detected by keyword engine)"
 
-    return f"""Analyse this ASX-listed company for operational and commercial pressures.
+    prize_str = f"${size_of_prize/1_000_000:.1f}M" if size_of_prize >= 1_000_000 else (
+        f"${size_of_prize/1_000:.0f}K" if size_of_prize > 0 else "Not calculated"
+    )
 
-COMPANY: {company_name} ({ticker})
-SECTOR: {sector}
+    return f"""You are analysing {company_name} ({ticker}), an ASX-listed {sector} company, as a potential client for New Delta.
 
-RECENT ASX ANNOUNCEMENTS:
+RECENT ASX ANNOUNCEMENTS (last 24 months):
 {ann_lines}
 
-EXISTING RULE-BASED SIGNALS (keyword engine output):
+DETECTED PRESSURE SIGNALS (rule-based engine):
 {sig_lines}
 
-Instructions:
-1. VALIDATE each existing signal (by index). Confirm or deny based on actual announcement evidence.
-2. DETECT NEW SIGNALS the keyword engine missed — subtle language, implications, cross-announcement patterns.
-3. REFINED PROFILE: specific strategic direction, tailwind, and headwind for this company's actual situation.
-4. LIKELIHOOD SCORE 1-10: how urgently does this company need external operational expertise?
+CURRENT SIZE OF PRIZE ESTIMATE: {prize_str}
+DEAL FIT: {deal_fit or 'Not classified'}
 
-Respond with valid JSON only — no markdown fences, no explanation outside the JSON structure:
+---
+
+Provide the following analysis. Respond with valid JSON only — no markdown fences, no text outside the JSON.
+
 {{
   "validated_signals": [
     {{"index": 0, "confirmed": true, "reasoning": "short reason"}}
@@ -70,17 +81,22 @@ Respond with valid JSON only — no markdown fences, no explanation outside the 
       "pressure_type": "production|license_to_operate|cost|people|quality|future_readiness",
       "strength": "strong|moderate|weak",
       "summary": "concise one-sentence description of the pressure",
-      "reasoning": "what in the announcements led to this signal",
+      "reasoning": "what in the announcements led to this",
       "source_title": "the announcement title that triggered this"
     }}
   ],
   "refined_profile": {{
-    "strategic_direction": "...",
-    "primary_tailwind": "...",
-    "primary_headwind": "...",
+    "strategic_direction": "1-2 sentence description of what this company is trying to achieve right now based on their announcements",
+    "key_pressures": "2-3 sentences on the most significant operational challenges. Be specific — reference actual announcements.",
+    "nd_fit_assessment": "2-3 sentences on which New Delta pillars represent the strongest opportunity and why this company would benefit from New Delta's methodology specifically",
+    "primary_tailwind": "strongest market or operational tailwind for this company",
+    "primary_headwind": "strongest operational headwind or challenge",
     "likelihood_score": 7,
-    "likelihood_reasoning": "short explanation for the score"
-  }}
+    "likelihood_reasoning": "1-2 sentences explaining the urgency score"
+  }},
+  "prize_assessment": "Is the estimated {prize_str} problem impact reasonable based on what you see in the announcements? If you think it should be higher or lower, say so briefly.",
+  "outreach_hypothesis": "2-3 sentences framed as: We believe [company] is facing [specific problem] that is costing approximately [dollar range]. Our [specific methodology] can reduce this by [percentage range].",
+  "red_flags": "Any reasons NOT to pursue this company (in administration, being acquired, too small, signals are stale, etc.). Write null if none."
 }}"""
 
 
@@ -91,17 +107,23 @@ def run_deep_analysis(
     sector: str,
     existing_signals: list,
     api_key: str,
+    size_of_prize: int = 0,
+    deal_fit: str = "",
 ) -> dict:
     """
     Run Claude deep analysis for one company.
 
     Returns a dict with:
-        validated_signals: list of {index, confirmed, reasoning}
-        new_signals:       list of new signal dicts
-        refined_profile:   dict with strategic_direction, tailwind, headwind, likelihood
-        tokens_used:       int
-        announcements:     list of fetched announcements (for logging)
-        error:             str (only if something went wrong)
+        validated_signals:  list of {index, confirmed, reasoning}
+        new_signals:        list of new signal dicts
+        refined_profile:    dict with strategic_direction, key_pressures, nd_fit_assessment,
+                            tailwind, headwind, likelihood + extended fields
+        prize_assessment:   str — Claude's validation of the Size of Prize estimate
+        outreach_hypothesis: str — the core BD pitch hypothesis
+        red_flags:          str|None — reasons not to pursue
+        tokens_used:        int
+        announcements:      list of fetched announcements (for logging)
+        error:              str (only if something went wrong)
     """
     import anthropic
 
@@ -112,7 +134,11 @@ def run_deep_analysis(
     if not announcements:
         return {"error": f"No announcements available for {ticker}"}
 
-    prompt = _build_prompt(company_name, ticker, sector, existing_signals, announcements)
+    prompt = _build_prompt(
+        company_name, ticker, sector,
+        existing_signals, announcements,
+        size_of_prize, deal_fit,
+    )
 
     client = anthropic.Anthropic(api_key=api_key)
     try:
@@ -132,14 +158,13 @@ def run_deep_analysis(
     tokens_used = response.usage.input_tokens + response.usage.output_tokens
     raw = response.content[0].text.strip()
 
-    # Parse JSON — Claude usually returns clean JSON but strip fences if present
+    # Strip markdown fences if Claude wrapped the JSON
     raw = re.sub(r"^```json\s*", "", raw)
     raw = re.sub(r"\s*```$", "", raw)
 
     try:
         result = json.loads(raw)
     except json.JSONDecodeError:
-        # Try to pull the outermost { ... } block
         m = re.search(r"\{.*\}", raw, re.DOTALL)
         if m:
             try:

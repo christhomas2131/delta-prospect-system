@@ -72,15 +72,26 @@ function SizeOfPrize({ prospect }) {
         <DealFitBadge prize={total} />
       </div>
 
-      {/* Big number */}
+      {/* Big number + confidence */}
       <div className="mb-4">
         <div className="font-mono text-xs mb-1" style={{ color: '#4a5a70' }}>ESTIMATED PROBLEM IMPACT</div>
-        <div className="font-mono font-bold" style={{
-          fontSize: 36,
-          color: total >= 50_000_000 ? '#fb923c' : total >= 5_000_000 ? '#22c55e' : '#8fa3bf',
-          lineHeight: 1,
-        }}>
-          {fmtPrize(total) || '$0'}
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap' }}>
+          <div className="font-mono font-bold" style={{
+            fontSize: 36,
+            color: total >= 50_000_000 ? '#fb923c' : total >= 5_000_000 ? '#22c55e' : '#8fa3bf',
+            lineHeight: 1,
+          }}>
+            {fmtPrize(total) || '$0'}
+          </div>
+          {breakdown?.confidence_label && (
+            <div className="font-mono text-xs" style={{
+              color: breakdown.confidence === 'high' ? '#22c55e'
+                   : breakdown.confidence === 'moderate' ? '#eab308'
+                   : '#6b7280',
+            }}>
+              {breakdown.confidence_label}
+            </div>
+          )}
         </div>
       </div>
 
@@ -130,6 +141,16 @@ function SizeOfPrize({ prospect }) {
                 </div>
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* AI Assessment (from Deep Analysis) */}
+      {prospect?.prize_ai_assessment && (
+        <div className="mb-3" style={{ padding: '8px 10px', background: GOLD_BG, border: `1px solid ${GOLD_BORDER}` }}>
+          <div className="font-mono text-xs mb-1" style={{ color: GOLD }}>◆ AI ASSESSMENT</div>
+          <div className="text-xs" style={{ color: '#c9a84c', lineHeight: 1.5 }}>
+            {prospect.prize_ai_assessment}
           </div>
         </div>
       )}
@@ -1130,7 +1151,61 @@ export default function DeepIntelligence() {
         )}
       </div>
 
-      {/* 7. Pressure Signals table */}
+      {/* 7. Extended Deep Analysis output */}
+      {(prospect.outreach_hypothesis || prospect.key_pressures || prospect.nd_fit_assessment || prospect.red_flags) && (
+        <div className="card mb-4">
+          <div className="px-4 py-3" style={{ borderBottom: '1px solid #1e2530' }}>
+            <span className="font-mono text-xs uppercase tracking-widest" style={{ color: GOLD_BORDER }}>
+              ◆ Deep Intelligence
+            </span>
+          </div>
+
+          {/* Outreach Hypothesis — most prominent */}
+          {prospect.outreach_hypothesis && (
+            <div className="px-4 py-4" style={{ borderBottom: '1px solid #1e2530', background: '#0e1318' }}>
+              <div className="font-mono text-xs uppercase tracking-widest mb-2" style={{ color: '#22c55e' }}>
+                OUTREACH HYPOTHESIS
+              </div>
+              <div className="text-sm" style={{ color: '#e2e8f0', lineHeight: 1.6, fontStyle: 'italic' }}>
+                "{prospect.outreach_hypothesis}"
+              </div>
+              <button
+                onClick={() => { navigator.clipboard.writeText(prospect.outreach_hypothesis); }}
+                className="font-mono text-xs px-2 py-1 mt-2"
+                style={{ background: 'none', border: '1px solid #1e2530', color: '#6b7280', cursor: 'pointer' }}
+                onMouseEnter={e => { e.currentTarget.style.color = '#e2e8f0'; e.currentTarget.style.borderColor = '#2d3a4d' }}
+                onMouseLeave={e => { e.currentTarget.style.color = '#6b7280'; e.currentTarget.style.borderColor = '#1e2530' }}
+              >
+                Copy
+              </button>
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-0" style={{ borderBottom: '1px solid #1e2530' }}>
+            {prospect.key_pressures && (
+              <div className="px-4 py-4" style={{ borderRight: '1px solid #1e2530' }}>
+                <div className="font-mono text-xs uppercase tracking-widest mb-2" style={{ color: '#4a5a70' }}>KEY PRESSURES</div>
+                <div className="text-sm" style={{ color: '#8fa3bf', lineHeight: 1.6 }}>{prospect.key_pressures}</div>
+              </div>
+            )}
+            {prospect.nd_fit_assessment && (
+              <div className="px-4 py-4">
+                <div className="font-mono text-xs uppercase tracking-widest mb-2" style={{ color: '#4a5a70' }}>NEW DELTA FIT</div>
+                <div className="text-sm" style={{ color: '#8fa3bf', lineHeight: 1.6 }}>{prospect.nd_fit_assessment}</div>
+              </div>
+            )}
+          </div>
+
+          {prospect.red_flags && prospect.red_flags !== 'null' && (
+            <div className="px-4 py-4" style={{ background: '#140808' }}>
+              <div className="font-mono text-xs uppercase tracking-widest mb-2" style={{ color: '#ef4444' }}>⚠ RED FLAGS</div>
+              <div className="text-sm" style={{ color: '#fca5a5', lineHeight: 1.6 }}>{prospect.red_flags}</div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 9. Pressure Signals table */}
       <div className="card mb-4">
         <div className="px-4 py-3 flex items-center gap-3" style={{ borderBottom: '1px solid #1e2530' }}>
           <span className="font-mono text-xs uppercase tracking-widest" style={{ color: '#4a5a70' }}>
@@ -1242,7 +1317,7 @@ export default function DeepIntelligence() {
         )}
       </div>
 
-      {/* 8. Analyst Notes */}
+      {/* 10. Analyst Notes */}
       <div className="card p-4">
         <div className="font-mono text-xs uppercase tracking-widest mb-3" style={{ color: '#4a5a70' }}>
           Analyst Notes

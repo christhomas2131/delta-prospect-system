@@ -54,6 +54,25 @@ DO $$ BEGIN
     END IF;
 END $$;
 
+-- v2.2 migration: replace accessibility_score with text location fields;
+--                 add deep analysis extended output columns
+DO $$ BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'prospect_matrix') THEN
+        -- Drop the numeric score; replaced by text location fields
+        ALTER TABLE prospect_matrix DROP COLUMN IF EXISTS accessibility_score;
+        -- Location fields
+        ALTER TABLE prospect_matrix ADD COLUMN IF NOT EXISTS registered_city  TEXT;
+        ALTER TABLE prospect_matrix ADD COLUMN IF NOT EXISTS registered_state TEXT;
+        ALTER TABLE prospect_matrix ADD COLUMN IF NOT EXISTS in_australia      BOOLEAN DEFAULT TRUE;
+        -- Deep analysis extended output
+        ALTER TABLE prospect_matrix ADD COLUMN IF NOT EXISTS key_pressures      TEXT;
+        ALTER TABLE prospect_matrix ADD COLUMN IF NOT EXISTS nd_fit_assessment  TEXT;
+        ALTER TABLE prospect_matrix ADD COLUMN IF NOT EXISTS prize_ai_assessment TEXT;
+        ALTER TABLE prospect_matrix ADD COLUMN IF NOT EXISTS outreach_hypothesis TEXT;
+        ALTER TABLE prospect_matrix ADD COLUMN IF NOT EXISTS red_flags           TEXT;
+    END IF;
+END $$;
+
 -- ============================================================================
 -- ENUMS
 -- ============================================================================
@@ -173,10 +192,21 @@ CREATE TABLE IF NOT EXISTS prospect_matrix (
     analyst_notes            TEXT,
     is_watchlisted           BOOLEAN DEFAULT FALSE,
 
-    -- v2.1: Location accessibility and Size of Prize
-    accessibility_score      INTEGER DEFAULT 5,
+    -- v2.1: Size of Prize
     size_of_prize            BIGINT,
     prize_breakdown          JSONB,
+
+    -- v2.2: Location fields (from principal_activities text detection)
+    registered_city          TEXT,
+    registered_state         TEXT,
+    in_australia             BOOLEAN DEFAULT TRUE,
+
+    -- v2.2: Deep analysis extended output
+    key_pressures            TEXT,
+    nd_fit_assessment        TEXT,
+    prize_ai_assessment      TEXT,
+    outreach_hypothesis      TEXT,
+    red_flags                TEXT,
 
     created_at               TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at               TIMESTAMPTZ NOT NULL DEFAULT NOW(),

@@ -138,6 +138,60 @@ PILLAR_LABELS = {
     "future_readiness":   "Future Readiness",
 }
 
+# ---------------------------------------------------------------------------
+# Routine filing discount
+# ---------------------------------------------------------------------------
+# These patterns indicate administrative/routine ASX filings rather than
+# actual operational incidents. Their dollar value is multiplied by 0.25.
+
+ROUTINE_FILING_PATTERNS = [
+    r"conference call",
+    r"\bAGM\b|annual general meeting",
+    r"investor presentation",
+    r"annual report",
+    r"appendix 4[DE]",
+    r"half.year(ly)? report",
+    r"\bdividend\b",
+    r"cleansing notice",
+    r"quotation of securities|cessation of securities|trading halt",
+    r"appendix 3[XY]",          # Director interest notices (routine)
+    r"change of director",
+    r"becoming.{0,10}substantial holder|ceasing.{0,10}substantial holder",
+    r"change in substantial holding",
+    r"notice to.{0,10}(meeting|noteholder)",
+    r"corporate governance statement",
+]
+
+ROUTINE_DISCOUNT = 0.25  # multiply dollar estimate by this for routine filings
+
+KEEP_FULL_VALUE_PATTERNS = [
+    # Even if the title looks routine, keep full value if these are present
+    r"fatal|fatality",
+    r"incident|injury|accident",
+    r"impairment|write.?down|going concern",
+    r"capital rais|restructur|redundanc|strike",
+    r"environmental breach|infringement|spill",
+    r"production.{0,20}(below|miss|downgrad|halt)",
+    r"force majeure",
+    r"stop work|prohibition notice|improvement notice",
+]
+
+
+def _is_routine_filing(source_title: str) -> bool:
+    """Return True if this announcement is a routine administrative filing."""
+    if not source_title:
+        return False
+    title = source_title.strip()
+    # If any "keep full value" pattern matches, it's not routine
+    for p in KEEP_FULL_VALUE_PATTERNS:
+        if re.search(p, title, re.IGNORECASE):
+            return False
+    # Check routine patterns
+    for p in ROUTINE_FILING_PATTERNS:
+        if re.search(p, title, re.IGNORECASE):
+            return True
+    return False
+
 
 def _signal_dollar_value(signal: dict) -> int:
     """Return the estimated dollar value for one signal."""
@@ -191,14 +245,27 @@ def calculate_size_of_prize(conn, prospect_id: str) -> dict:
 
     # Calculate dollar value per signal
     valued = []
+    non_routine_total = 0
+    routine_total = 0
+
     for s in signals:
-        value = _signal_dollar_value(s)
+        base_value = _signal_dollar_value(s)
+        source_title = s.get("source_title") or ""
+        routine = _is_routine_filing(source_title)
+        effective = int(base_value * ROUTINE_DISCOUNT) if routine else base_value
+
         valued.append({
-            "pillar":   s["pressure_type"],
-            "strength": s["strength"],
-            "summary":  s.get("summary") or "",
-            "value":    value,
+            "pillar":    s["pressure_type"],
+            "strength":  s["strength"],
+            "summary":   s.get("summary") or "",
+            "value":     effective,
+            "routine":   routine,
         })
+
+        if routine:
+            routine_total += effective
+        else:
+            non_routine_total += effective
 
     # Community reputation multiplier: if 2+ license_to_operate signals
     # mention community/reputation, multiply their combined value by 1.5×
@@ -218,11 +285,29 @@ def calculate_size_of_prize(conn, prospect_id: str) -> dict:
             pillar == "license_to_operate"
             and re.search(r"community|reputation", v["summary"], re.IGNORECASE)
         ):
-            effective = int(effective * community_multiplier)
+            extra = int(effective * (community_multiplier - 1.0))
+            effective += extra
+            non_routine_total += extra if not v["routine"] else 0
         breakdown[pillar] = breakdown.get(pillar, 0) + effective
         v["effective_value"] = effective
 
     total = sum(breakdown.values())
+
+    # Confidence: what proportion of the total comes from non-routine signals?
+    if total == 0:
+        confidence = "low"
+        confidence_label = "Low confidence — no signals"
+    else:
+        non_routine_pct = non_routine_total / total
+        if non_routine_pct >= 0.50:
+            confidence = "high"
+            confidence_label = "High confidence"
+        elif non_routine_pct >= 0.25:
+            confidence = "moderate"
+            confidence_label = "Moderate confidence"
+        else:
+            confidence = "low"
+            confidence_label = "Low confidence — mostly routine filings"
 
     # Top 3 contributors by individual signal value
     top_3 = sorted(valued, key=lambda x: x.get("effective_value", x["value"]), reverse=True)[:3]
@@ -231,6 +316,7 @@ def calculate_size_of_prize(conn, prospect_id: str) -> dict:
             "pillar":   s["pillar"],
             "summary":  s["summary"],
             "value":    s.get("effective_value", s["value"]),
+            "routine":  s.get("routine", False),
         }
         for s in top_3
     ]
@@ -244,10 +330,14 @@ def calculate_size_of_prize(conn, prospect_id: str) -> dict:
         deal_fit = "small"
 
     return {
-        "total_prize":       total,
+        "total_prize":         total,
         "breakdown_by_pillar": breakdown,
         "top_3_contributors":  top_3_out,
         "deal_fit":            deal_fit,
+        "confidence":          confidence,
+        "confidence_label":    confidence_label,
+        "non_routine_total":   non_routine_total,
+        "routine_total":       routine_total,
     }
 
 

@@ -479,29 +479,62 @@ def get_prospects(conn, statuses=None, ticker=None):
         return cur.fetchall()
 
 
-def _calc_accessibility_score(principal_activities: str) -> int:
+def _detect_location(principal_activities: str) -> dict:
     """
-    Score how accessible this company is to New Delta (Brisbane-based).
-    Baseline 5 for any ASX-listed company. Bonus points for known Australian
-    states/cities detected in principal_activities text.
+    Detect registered city and state from principal_activities text.
+    Returns {'city': str|None, 'state': str|None, 'in_australia': True}
+    All ASX-listed companies are treated as in_australia=True by default.
     """
-    # State keyword → bonus points to add to baseline of 5
-    STATE_BONUSES = {
-        r"\bqld\b|queensland|\bbrisbane\b":                  3,
-        r"\bwa\b|western australia|\bperth\b":               2,
-        r"\bnsw\b|new south wales|\bsydney\b":               2,
-        r"\bvic\b|victoria|\bmelbourne\b":                   1,
-        r"\bsa\b|south australia|\badelaide\b":              1,
-        r"\bnt\b|northern territory|\bdarwin\b":             1,
-        r"\btas\b|tasmania|\bhobart\b":                      1,
-        r"\bact\b|\bcanberra\b":                             1,
-    }
     text = (principal_activities or "").lower()
-    bonus = 0
-    for pattern, pts in STATE_BONUSES.items():
+
+    # City patterns — ordered specific-to-general, each maps to (city, state)
+    CITY_PATTERNS = [
+        (r"\bgold coast\b",   "Gold Coast",   "QLD"),
+        (r"\btownsville\b",   "Townsville",   "QLD"),
+        (r"\bcairns\b",       "Cairns",       "QLD"),
+        (r"\bbrisbane\b",     "Brisbane",     "QLD"),
+        (r"\bport hedland\b", "Port Hedland", "WA"),
+        (r"\bkarratha\b",     "Karratha",     "WA"),
+        (r"\bkalgoorlie\b",   "Kalgoorlie",   "WA"),
+        (r"\bperth\b",        "Perth",        "WA"),
+        (r"\bnewcastle\b",    "Newcastle",    "NSW"),
+        (r"\bwollongong\b",   "Wollongong",   "NSW"),
+        (r"\bsydney\b",       "Sydney",       "NSW"),
+        (r"\bgeelong\b",      "Geelong",      "VIC"),
+        (r"\bmelbourne\b",    "Melbourne",    "VIC"),
+        (r"\badelaide\b",     "Adelaide",     "SA"),
+        (r"\bdarwin\b",       "Darwin",       "NT"),
+        (r"\bhobart\b",       "Hobart",       "TAS"),
+        (r"\bcanberra\b",     "Canberra",     "ACT"),
+    ]
+
+    STATE_PATTERNS = [
+        (r"\bqld\b|queensland",        "QLD"),
+        (r"\bwa\b|western australia",  "WA"),
+        (r"\bnsw\b|new south wales",   "NSW"),
+        (r"\bvic\b|victoria",          "VIC"),
+        (r"\bsa\b|south australia",    "SA"),
+        (r"\bnt\b|northern territory", "NT"),
+        (r"\btas\b|tasmania",          "TAS"),
+        (r"\bact\b",                   "ACT"),
+    ]
+
+    city = None
+    state = None
+
+    for pattern, city_name, city_state in CITY_PATTERNS:
         if re.search(pattern, text, re.IGNORECASE):
-            bonus = max(bonus, pts)
-    return min(10, 5 + bonus)
+            city = city_name
+            state = city_state
+            break
+
+    if not state:
+        for pattern, state_code in STATE_PATTERNS:
+            if re.search(pattern, text, re.IGNORECASE):
+                state = state_code
+                break
+
+    return {"city": city, "state": state, "in_australia": True}
 
 
 def save_results(conn, prospect, signals, profile, announcements, principal_activities=""):
@@ -529,7 +562,7 @@ def save_results(conn, prospect, signals, profile, announcements, principal_acti
 
         lk = max(1, min(10, int(profile["likelihood_score"])))
         lead_tier = calculate_lead_tier(signals)
-        accessibility = _calc_accessibility_score(principal_activities)
+        loc = _detect_location(principal_activities)
 
         cur.execute("""
             UPDATE prospect_matrix SET
@@ -538,13 +571,16 @@ def save_results(conn, prospect, signals, profile, announcements, principal_acti
                 primary_headwind=COALESCE(%s,primary_headwind),
                 likelihood_score=COALESCE(%s,likelihood_score),
                 lead_tier=%s,
-                accessibility_score=%s,
+                registered_city=COALESCE(%s,registered_city),
+                registered_state=COALESCE(%s,registered_state),
+                in_australia=%s,
                 status=CASE WHEN status IN ('unscreened','qualified')
                     THEN 'enriched'::prospect_status ELSE status END,
                 status_changed_by='enrichment_agent'
             WHERE id=%s
         """, (profile["strategic_direction"], profile["primary_tailwind"],
-              profile["primary_headwind"], lk, lead_tier, accessibility, pid))
+              profile["primary_headwind"], lk, lead_tier,
+              loc["city"], loc["state"], loc["in_australia"], pid))
 
         cur.execute("SELECT calculate_prospect_score(%s)", (pid,))
         score = cur.fetchone()[0]
@@ -573,7 +609,8 @@ def save_results(conn, prospect, signals, profile, announcements, principal_acti
         """, (lid, len(announcements), inserted))
         conn.commit()
         prize_fmt = f"${prize.get('total_prize', 0)/1e6:.1f}M" if 'prize' in dir() else "n/a"
-        logger.info(f"{tk}: {inserted} signals, likelihood={lk}, tier={lead_tier}, score={score}, prize={prize_fmt}, access={accessibility}")
+        loc_fmt = f"{loc['city']}, {loc['state']}" if loc['city'] else (loc['state'] or "AU")
+        logger.info(f"{tk}: {inserted} signals, likelihood={lk}, tier={lead_tier}, score={score}, prize={prize_fmt}, loc={loc_fmt}")
 
 
 def rescore_all(conn):

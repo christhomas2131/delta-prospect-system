@@ -73,9 +73,9 @@ function Chip({ label, count, active, onClick }) {
       className="font-mono text-xs flex items-center gap-1.5 transition-all"
       style={{
         padding: '3px 10px',
-        background: active ? '#1e3a5f' : 'none',
-        border: `1px solid ${active ? '#1e6fd4' : '#1e2530'}`,
-        color: active ? '#93c5fd' : '#4a5a70',
+        background: active ? '#1e3a5f' : 'transparent',
+        border: `1px solid ${active ? '#3b82f6' : '#3d4f63'}`,
+        color: active ? '#e2e8f0' : '#8fa3bf',
         cursor: 'pointer',
         whiteSpace: 'nowrap',
       }}
@@ -83,8 +83,8 @@ function Chip({ label, count, active, onClick }) {
       {label}
       {count != null && (
         <span style={{
-          background: active ? 'rgba(30,111,212,0.3)' : '#1e2530',
-          color: active ? '#93c5fd' : '#4a5a70',
+          background: active ? 'rgba(59,130,246,0.3)' : 'rgba(30,37,48,0.8)',
+          color: active ? '#e2e8f0' : '#8fa3bf',
           fontSize: 9,
           padding: '1px 5px',
           minWidth: 20,
@@ -163,6 +163,19 @@ export default function LeadMatrix({ watchlistOnly = false }) {
 
   const [prize10mFilter, setPrize10mFilter] = useState(false)
   const [prize1mFilter, setPrize1mFilter] = useState(false)
+  const [australiaOnly, setAustraliaOnly] = useState(false)
+  const [selectedCities, setSelectedCities] = useState([])
+  const [cityDropdownOpen, setCityDropdownOpen] = useState(false)
+  const [showPillars, setShowPillars] = useState(false)
+
+  const CITY_OPTIONS = ['Brisbane', 'Perth', 'Sydney', 'Melbourne', 'Adelaide', 'Darwin', 'Hobart', 'Canberra', 'Gold Coast', 'Townsville']
+
+  const toggleCity = (city) => {
+    setSelectedCities(prev =>
+      prev.includes(city) ? prev.filter(c => c !== city) : [...prev, city]
+    )
+    setPage(0)
+  }
 
   const [sort, setSort] = useState('total_signals')
   const [dir, setDir] = useState('desc')
@@ -190,6 +203,8 @@ export default function LeadMatrix({ watchlistOnly = false }) {
     if (wlFilter || watchlistOnly) p.set('watchlist', 'true')
     if (prize10mFilter) p.set('min_prize', '10000000')
     else if (prize1mFilter) p.set('min_prize', '1000000')
+    if (australiaOnly) p.set('australia_only', 'true')
+    if (selectedCities.length > 0) p.set('city', selectedCities.join(','))
 
     // Chip-based tier overrides
     if (hotFilter) {
@@ -211,7 +226,7 @@ export default function LeadMatrix({ watchlistOnly = false }) {
       setError('Cannot reach the API — is the backend running?')
     }
     setLoading(false)
-  }, [search, sector, leadTier, hasSignals, wlFilter, hotFilter, warmFilter, prize10mFilter, prize1mFilter, watchlistOnly, sort, dir, page])
+  }, [search, sector, leadTier, hasSignals, wlFilter, hotFilter, warmFilter, prize10mFilter, prize1mFilter, australiaOnly, selectedCities, watchlistOnly, sort, dir, page])
 
   useEffect(() => { load() }, [load])
 
@@ -265,10 +280,11 @@ export default function LeadMatrix({ watchlistOnly = false }) {
     setHasSignals(false); setWlFilter(false)
     setHotFilter(false); setWarmFilter(false)
     setPrize10mFilter(false); setPrize1mFilter(false)
+    setAustraliaOnly(false); setSelectedCities([])
     setPage(0)
   }
 
-  const hasFilters = search || sector || leadTier || hasSignals || wlFilter || hotFilter || warmFilter || prize10mFilter || prize1mFilter
+  const hasFilters = search || sector || leadTier || hasSignals || wlFilter || hotFilter || warmFilter || prize10mFilter || prize1mFilter || australiaOnly || selectedCities.length > 0
 
   const totalPages = Math.ceil(total / PAGE_SIZE)
 
@@ -419,17 +435,103 @@ export default function LeadMatrix({ watchlistOnly = false }) {
           className="px-3 py-1.5 text-sm" style={{ minWidth: 140 }}>
           {LEAD_TIERS.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
         </select>
+
+        {/* Australia Only toggle */}
+        <button
+          onClick={() => { setAustraliaOnly(a => !a); setPage(0) }}
+          className="font-mono text-xs px-3 py-1.5 flex items-center gap-1.5"
+          style={{
+            background: australiaOnly ? '#1e3a5f' : 'transparent',
+            border: `1px solid ${australiaOnly ? '#3b82f6' : '#3d4f63'}`,
+            color: australiaOnly ? '#e2e8f0' : '#8fa3bf',
+            cursor: 'pointer',
+          }}
+        >
+          🇦🇺 AU Only
+        </button>
+
+        {/* City multi-select dropdown */}
+        <div style={{ position: 'relative' }}>
+          <button
+            onClick={() => setCityDropdownOpen(o => !o)}
+            className="font-mono text-xs px-3 py-1.5 flex items-center gap-1.5"
+            style={{
+              background: selectedCities.length > 0 ? '#1e3a5f' : 'transparent',
+              border: `1px solid ${selectedCities.length > 0 ? '#3b82f6' : '#3d4f63'}`,
+              color: selectedCities.length > 0 ? '#e2e8f0' : '#8fa3bf',
+              cursor: 'pointer',
+            }}
+          >
+            {selectedCities.length > 0 ? `${selectedCities.length} cit${selectedCities.length > 1 ? 'ies' : 'y'}` : 'City ▾'}
+          </button>
+          {cityDropdownOpen && (
+            <div
+              style={{
+                position: 'absolute', top: '100%', left: 0, zIndex: 50,
+                background: '#111418', border: '1px solid #2d3a4d',
+                minWidth: 160, marginTop: 2,
+              }}
+              onMouseLeave={() => setCityDropdownOpen(false)}
+            >
+              {CITY_OPTIONS.map(city => (
+                <label key={city}
+                  className="flex items-center gap-2 px-3 py-1.5 cursor-pointer font-mono text-xs"
+                  style={{
+                    color: selectedCities.includes(city) ? '#e2e8f0' : '#8fa3bf',
+                    background: selectedCities.includes(city) ? '#1e2c3d' : 'transparent',
+                  }}
+                  onMouseEnter={e => { if (!selectedCities.includes(city)) e.currentTarget.style.background = '#161b24' }}
+                  onMouseLeave={e => { if (!selectedCities.includes(city)) e.currentTarget.style.background = 'transparent' }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={selectedCities.includes(city)}
+                    onChange={() => toggleCity(city)}
+                    style={{ accentColor: '#3b82f6' }}
+                  />
+                  {city}
+                </label>
+              ))}
+              {selectedCities.length > 0 && (
+                <button
+                  onClick={() => { setSelectedCities([]); setCityDropdownOpen(false) }}
+                  className="w-full font-mono text-xs px-3 py-1.5 text-left"
+                  style={{ color: '#ef4444', borderTop: '1px solid #2d3a4d', background: 'none', cursor: 'pointer' }}
+                >
+                  ✕ Clear cities
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+
         {hasFilters && (
           <button onClick={clearAll}
             className="px-3 py-1.5 text-xs font-mono"
-            style={{ background: 'none', border: '1px solid #1e2530', color: '#8fa3bf', cursor: 'pointer' }}>
-            ✕ Clear
+            style={{ background: 'none', border: '1px solid #2d3a4d', color: '#8fa3bf', cursor: 'pointer' }}>
+            ✕ Clear all
           </button>
         )}
       </div>
 
-      {/* Quick Filter Chips */}
-      <div className="flex gap-1.5 flex-wrap mb-4">
+      {/* Pillar toggle + Quick Filter Chips */}
+      <div className="flex items-center gap-1.5 flex-wrap mb-4">
+        {/* Pillar toggle */}
+        <button
+          onClick={() => setShowPillars(s => !s)}
+          className="font-mono text-xs px-3 py-1.5 flex items-center gap-1.5"
+          style={{
+            background: showPillars ? '#1a2535' : 'transparent',
+            border: '1px solid #3d4f63',
+            color: showPillars ? '#93c5fd' : '#6b7f96',
+            cursor: 'pointer',
+          }}
+        >
+          {showPillars ? '▼' : '▶'} Pillar Detail
+        </button>
+
+        <div style={{ width: 1, height: 18, background: '#1e2530', margin: '0 2px' }} />
+
         {chips.map(c => (
           <Chip key={c.id} label={c.label} count={c.count} active={c.active} onClick={c.toggle} />
         ))}
@@ -460,7 +562,7 @@ export default function LeadMatrix({ watchlistOnly = false }) {
       {(loading || data.length > 0) && (
         <div style={{ background: '#111418', border: '1px solid #1e2530' }}>
           <div style={{ overflowX: 'auto' }}>
-            <table className="w-full" style={{ minWidth: 1400 }}>
+            <table className="w-full" style={{ minWidth: showPillars ? 1400 : 900 }}>
               <thead>
                 <tr style={{ borderBottom: '1px solid #1e2530' }}>
                   <th className="px-3 py-2.5" style={{ width: 36 }} />
@@ -468,14 +570,16 @@ export default function LeadMatrix({ watchlistOnly = false }) {
                   <SortHeader label="Company" field="company_name" sort={sort} dir={dir} onSort={handleSort} />
                   <SortHeader label="Sector" field="gics_sector" sort={sort} dir={dir} onSort={handleSort} />
                   <SortHeader label="Tier" field="lead_tier" sort={sort} dir={dir} onSort={handleSort} />
-                  <SortHeader label="Prod" field="sig_production" sort={sort} dir={dir} onSort={handleSort} />
-                  <SortHeader label="LTO" field="sig_license" sort={sort} dir={dir} onSort={handleSort} />
-                  <SortHeader label="Cost" field="sig_cost" sort={sort} dir={dir} onSort={handleSort} />
-                  <SortHeader label="People" field="sig_people" sort={sort} dir={dir} onSort={handleSort} />
-                  <SortHeader label="Qual" field="sig_quality" sort={sort} dir={dir} onSort={handleSort} />
-                  <SortHeader label="Future" field="sig_future" sort={sort} dir={dir} onSort={handleSort} />
+                  {showPillars && <>
+                    <SortHeader label="Prod" field="sig_production" sort={sort} dir={dir} onSort={handleSort} />
+                    <SortHeader label="LTO" field="sig_license" sort={sort} dir={dir} onSort={handleSort} />
+                    <SortHeader label="Cost" field="sig_cost" sort={sort} dir={dir} onSort={handleSort} />
+                    <SortHeader label="People" field="sig_people" sort={sort} dir={dir} onSort={handleSort} />
+                    <SortHeader label="Qual" field="sig_quality" sort={sort} dir={dir} onSort={handleSort} />
+                    <SortHeader label="Future" field="sig_future" sort={sort} dir={dir} onSort={handleSort} />
+                  </>}
                   <SortHeader label="Signals" field="total_signals" sort={sort} dir={dir} onSort={handleSort} />
-                  <SortHeader label="Access" field="accessibility_score" sort={sort} dir={dir} onSort={handleSort} />
+                  <th className="px-4 py-2.5 text-left font-mono text-xs uppercase" style={{ color: '#4a5a70', whiteSpace: 'nowrap' }}>Location</th>
                   <SortHeader label="Est. Impact" field="size_of_prize" sort={sort} dir={dir} onSort={handleSort} />
                   <th className="px-4 py-2.5 text-left font-mono text-xs uppercase" style={{ color: '#4a5a70', whiteSpace: 'nowrap' }}>Deal Fit</th>
                   <th className="px-4 py-2.5 text-left font-mono text-xs uppercase" style={{ color: '#4a5a70', whiteSpace: 'nowrap' }}>Top Signal</th>
@@ -483,7 +587,7 @@ export default function LeadMatrix({ watchlistOnly = false }) {
               </thead>
               <tbody>
                 {loading && (
-                  <tr><td colSpan={17} className="px-4 py-8 text-center font-mono text-xs" style={{ color: '#4a5a70' }}>Loading...</td></tr>
+                  <tr><td colSpan={showPillars ? 17 : 11} className="px-4 py-8 text-center font-mono text-xs" style={{ color: '#4a5a70' }}>Loading...</td></tr>
                 )}
                 {!loading && data.map(p => {
                   const topSig = p.top_signal || ''
@@ -517,37 +621,36 @@ export default function LeadMatrix({ watchlistOnly = false }) {
                       <td className="px-4 py-2.5 font-mono text-xs" style={{ color: '#8fa3bf' }}>{p.gics_sector}</td>
                       {/* Lead Tier */}
                       <td className="px-4 py-2.5"><LeadTierBadge tier={p.lead_tier} /></td>
-                      {/* Production */}
-                      <td className="px-4 py-2.5 font-mono text-xs text-center" style={{ color: pillarColor(p.sig_production) }}>
-                        {p.sig_production > 0 ? p.sig_production : '—'}
-                      </td>
-                      {/* License to Operate */}
-                      <td className="px-4 py-2.5 font-mono text-xs text-center" style={{ color: pillarColor(p.sig_license) }}>
-                        {p.sig_license > 0 ? p.sig_license : '—'}
-                      </td>
-                      {/* Cost */}
-                      <td className="px-4 py-2.5 font-mono text-xs text-center" style={{ color: pillarColor(p.sig_cost) }}>
-                        {p.sig_cost > 0 ? p.sig_cost : '—'}
-                      </td>
-                      {/* People */}
-                      <td className="px-4 py-2.5 font-mono text-xs text-center" style={{ color: pillarColor(p.sig_people) }}>
-                        {p.sig_people > 0 ? p.sig_people : '—'}
-                      </td>
-                      {/* Quality */}
-                      <td className="px-4 py-2.5 font-mono text-xs text-center" style={{ color: pillarColor(p.sig_quality) }}>
-                        {p.sig_quality > 0 ? p.sig_quality : '—'}
-                      </td>
-                      {/* Future Readiness */}
-                      <td className="px-4 py-2.5 font-mono text-xs text-center" style={{ color: pillarColor(p.sig_future) }}>
-                        {p.sig_future > 0 ? p.sig_future : '—'}
-                      </td>
+                      {/* Pillar columns (collapsible) */}
+                      {showPillars && <>
+                        <td className="px-4 py-2.5 font-mono text-xs text-center" style={{ color: pillarColor(p.sig_production) }}>
+                          {p.sig_production > 0 ? p.sig_production : '—'}
+                        </td>
+                        <td className="px-4 py-2.5 font-mono text-xs text-center" style={{ color: pillarColor(p.sig_license) }}>
+                          {p.sig_license > 0 ? p.sig_license : '—'}
+                        </td>
+                        <td className="px-4 py-2.5 font-mono text-xs text-center" style={{ color: pillarColor(p.sig_cost) }}>
+                          {p.sig_cost > 0 ? p.sig_cost : '—'}
+                        </td>
+                        <td className="px-4 py-2.5 font-mono text-xs text-center" style={{ color: pillarColor(p.sig_people) }}>
+                          {p.sig_people > 0 ? p.sig_people : '—'}
+                        </td>
+                        <td className="px-4 py-2.5 font-mono text-xs text-center" style={{ color: pillarColor(p.sig_quality) }}>
+                          {p.sig_quality > 0 ? p.sig_quality : '—'}
+                        </td>
+                        <td className="px-4 py-2.5 font-mono text-xs text-center" style={{ color: pillarColor(p.sig_future) }}>
+                          {p.sig_future > 0 ? p.sig_future : '—'}
+                        </td>
+                      </>}
                       {/* Total Signals */}
                       <td className="px-4 py-2.5 font-mono text-xs text-center" style={{ color: p.total_signals > 0 ? '#e2e8f0' : '#2d3a4d' }}>
                         {p.total_signals > 0 ? p.total_signals : '—'}
                       </td>
-                      {/* Accessibility Score */}
-                      <td className="px-4 py-2.5 font-mono text-xs text-center" style={{ color: (p.accessibility_score || 5) >= 8 ? '#22c55e' : (p.accessibility_score || 5) >= 7 ? '#eab308' : '#8fa3bf' }}>
-                        {p.accessibility_score || 5}/10
+                      {/* Location */}
+                      <td className="px-4 py-2.5 font-mono text-xs" style={{ color: '#8fa3bf', whiteSpace: 'nowrap' }}>
+                        {p.registered_city && p.registered_state
+                          ? `${p.registered_city}, ${p.registered_state}`
+                          : p.registered_state || 'Australia'}
                       </td>
                       {/* Est. Impact */}
                       <td className="px-4 py-2.5 font-mono text-xs text-right" style={{ color: p.size_of_prize >= 5_000_000 ? '#22c55e' : p.size_of_prize > 0 ? '#8fa3bf' : '#2d3a4d' }}>
