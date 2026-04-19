@@ -45,6 +45,15 @@ DO $$ BEGIN
     END IF;
 END $$;
 
+-- v2.1 migration: accessibility_score, size_of_prize, prize_breakdown
+DO $$ BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'prospect_matrix') THEN
+        ALTER TABLE prospect_matrix ADD COLUMN IF NOT EXISTS accessibility_score INTEGER DEFAULT 5;
+        ALTER TABLE prospect_matrix ADD COLUMN IF NOT EXISTS size_of_prize BIGINT;
+        ALTER TABLE prospect_matrix ADD COLUMN IF NOT EXISTS prize_breakdown JSONB;
+    END IF;
+END $$;
+
 -- ============================================================================
 -- ENUMS
 -- ============================================================================
@@ -163,6 +172,12 @@ CREATE TABLE IF NOT EXISTS prospect_matrix (
 
     analyst_notes            TEXT,
     is_watchlisted           BOOLEAN DEFAULT FALSE,
+
+    -- v2.1: Location accessibility and Size of Prize
+    accessibility_score      INTEGER DEFAULT 5,
+    size_of_prize            BIGINT,
+    prize_breakdown          JSONB,
+
     created_at               TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at               TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 

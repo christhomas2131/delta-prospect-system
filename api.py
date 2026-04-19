@@ -280,6 +280,7 @@ def list_prospects(
     industry: Optional[str] = Query(None),
     lead_tier: Optional[str] = Query(None),
     min_score: Optional[float] = Query(None),
+    min_prize: Optional[int] = Query(None, description="Min size_of_prize in dollars"),
     min_strong_signals: Optional[int] = Query(None),
     has_signals: Optional[bool] = Query(None),
     search: Optional[str] = Query(None),
@@ -311,6 +312,9 @@ def list_prospects(
             if min_score is not None:
                 where_clauses.append("pm.prospect_score >= %s")
                 where_params.append(min_score)
+            if min_prize is not None:
+                where_clauses.append("pm.size_of_prize >= %s")
+                where_params.append(min_prize)
             if search:
                 where_clauses.append("(l.company_name ILIKE %s OR l.ticker ILIKE %s)")
                 where_params.extend([f"%{search}%", f"%{search}%"])
@@ -333,7 +337,7 @@ def list_prospects(
             valid_sorts = {
                 "prospect_score", "company_name", "ticker", "market_cap_aud",
                 "status", "updated_at", "total_signals", "likelihood_score",
-                "lead_tier",
+                "lead_tier", "size_of_prize", "accessibility_score",
             }
             if sort_by not in valid_sorts:
                 sort_by = "prospect_score"
@@ -363,6 +367,8 @@ def list_prospects(
                     pm.network_path,
                     pm.analyst_notes,
                     pm.updated_at,
+                    pm.accessibility_score,
+                    pm.size_of_prize,
                     COUNT(ps.id) AS total_signals,
                     COUNT(ps.id) FILTER (WHERE ps.strength = 'strong') AS strong_signals,
                     COUNT(ps.id) FILTER (WHERE ps.pressure_type::text = 'production') AS sig_production,
@@ -509,7 +515,9 @@ def export_prospects_csv(
                      ORDER BY CASE ps2.strength WHEN 'strong' THEN 1 WHEN 'moderate' THEN 2 ELSE 3 END,
                               ps2.detected_at DESC LIMIT 1) AS top_signal_url,
                     MAX(ps.source_date) AS latest_signal_date,
-                    pm.analyst_notes
+                    pm.analyst_notes,
+                    pm.accessibility_score,
+                    pm.size_of_prize
                 FROM prospect_matrix pm
                 JOIN asx_listings l ON l.id = pm.listing_id
                 LEFT JOIN pressure_signals ps ON ps.prospect_id = pm.id
@@ -529,6 +537,12 @@ def export_prospects_csv(
             if aud >= 1e6: return f"${aud/1e6:.0f}M"
             return f"${aud/1e3:.0f}K"
 
+        def deal_fit(prize):
+            if not prize: return ""
+            if prize >= 50_000_000: return "ENTERPRISE"
+            if prize >= 5_000_000: return "SWEET SPOT"
+            return "SMALL"
+
         output = io.StringIO()
         writer = csv.writer(output)
         writer.writerow([
@@ -536,7 +550,8 @@ def export_prospects_csv(
             "Lead Tier", "Production", "License to Operate", "Cost", "People",
             "Quality", "Future Readiness", "Total Signals", "Top Signal",
             "Source Announcement", "Source URL", "Latest Signal Date",
-            "Status", "Prospect Score", "Analyst Notes",
+            "Status", "Prospect Score", "Accessibility Score",
+            "Est. Impact (USD)", "Deal Fit", "Analyst Notes",
         ])
         for row in rows:
             writer.writerow([
@@ -559,6 +574,9 @@ def export_prospects_csv(
                 row["latest_signal_date"] or "",
                 row["status"],
                 float(row["prospect_score"]) if row["prospect_score"] else "",
+                row["accessibility_score"] if row["accessibility_score"] is not None else 5,
+                row["size_of_prize"] or "",
+                deal_fit(row["size_of_prize"]),
                 (row["analyst_notes"] or "").replace("\n", " "),
             ])
 
@@ -1134,7 +1152,8 @@ def _run_batch_with_progress():
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute("""
                 SELECT pm.id prospect_id, pm.status, l.id listing_id,
-                       l.ticker, l.company_name, l.gics_sector
+                       l.ticker, l.company_name, l.gics_sector,
+                       l.principal_activities
                 FROM prospect_matrix pm JOIN asx_listings l ON l.id=pm.listing_id
                 WHERE l.is_active=TRUE AND l.is_target_sector=TRUE
                 ORDER BY l.market_cap_aud DESC NULLS LAST
@@ -1156,7 +1175,7 @@ def _run_batch_with_progress():
                         continue
                     signals = detect_signals(p["company_name"], anns)
                     profile = generate_profile(p["gics_sector"], signals)
-                    save_results(conn, p, signals, profile, anns)
+                    save_results(conn, p, signals, profile, anns, p.get("principal_activities") or "")
                     _enrich_progress["ok"] += 1
                 except Exception as e:
                     logger.error(f"{tk}: {e}")

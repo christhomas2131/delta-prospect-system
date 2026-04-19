@@ -16,8 +16,8 @@ Usage:
     python enrichment_agent.py --mode rescore
 """
 
-import logging, argparse, sys, os, time, re
-from datetime import datetime, timezone
+import logging, argparse, sys, os, time, re, json
+from datetime import datetime, timezone, timedelta
 from typing import Optional
 
 import psycopg2
@@ -28,7 +28,14 @@ from asx_browser import ASXFetcher
 # Config
 # ---------------------------------------------------------------------------
 
-DELAY_ASX = 2.0   # Markit API rate limit — 2s between requests
+DELAY_ASX = 2.0          # Markit API rate limit — 2s between requests
+LOOKBACK_DAYS = 730      # ~24 months — skip announcements older than this
+
+# NOTE: The Markit Digital API (asx.api.markitdigital.com) is hard-capped at
+# 5 announcements per request. All count/page/date parameters are silently
+# ignored. The system accumulates signals over time via the DB unique
+# constraint (prospect_id, pressure_type, source_url) — each enrichment run
+# adds new signals for any announcements not previously seen.
 
 def _parse_database_url(url: str) -> dict:
     from urllib.parse import urlparse
@@ -325,17 +332,49 @@ PILLAR_HEADWIND_OVERRIDES = {
 # ---------------------------------------------------------------------------
 
 def detect_signals(company_name: str, announcements: list[dict]) -> list[dict]:
+    """
+    Scan announcement titles for pressure signal patterns.
+
+    Deduplication key: (pillar, pattern, source_url) — this allows the same
+    pattern to fire on DIFFERENT announcements (building up signal history
+    over multiple enrichment runs), while still preventing the same pattern
+    from duplicating on the same announcement URL within a single batch.
+
+    The DB UNIQUE constraint (prospect_id, pressure_type, source_url) enforces
+    true deduplication across runs: only the first signal per (pillar, URL)
+    is stored regardless of which pattern triggered it.
+
+    24-month date filter: announcements older than LOOKBACK_DAYS are skipped.
+    """
     signals = []
     seen = set()
 
+    cutoff = datetime.now(timezone.utc) - timedelta(days=LOOKBACK_DAYS)
+
     for ann in announcements:
+        # --- 24-month date filter ---
+        ann_date_str = ann.get("date", "")
+        if ann_date_str:
+            try:
+                ann_dt = datetime.fromisoformat(ann_date_str.replace("Z", "+00:00"))
+                if ann_dt.tzinfo is None:
+                    ann_dt = ann_dt.replace(tzinfo=timezone.utc)
+                if ann_dt < cutoff:
+                    continue
+            except (ValueError, TypeError):
+                pass  # keep if date can't be parsed
+
         title = ann.get("title", "")
         if not title:
             continue
+        ann_url = ann.get("url", "")
+
         for pillar, patterns in PILLAR_PATTERNS.items():
             for pattern, strength, summary_tpl in patterns:
                 if re.search(pattern, title, re.IGNORECASE):
-                    key = (pillar, pattern)
+                    # Key includes the URL so each announcement independently
+                    # triggers the pattern (different URLs → different signals)
+                    key = (pillar, pattern, ann_url)
                     if key in seen:
                         continue
                     seen.add(key)
@@ -345,7 +384,7 @@ def detect_signals(company_name: str, announcements: list[dict]) -> list[dict]:
                         "summary": summary_tpl.format(company=company_name),
                         "extracted_quote": title[:200],
                         "source_title": title,
-                        "source_url": ann.get("url", ""),
+                        "source_url": ann_url,
                         "source_date": ann.get("date", ""),
                         "confidence": {"strong": 0.85, "moderate": 0.65, "weak": 0.40}.get(strength, 0.5),
                     })
@@ -423,14 +462,16 @@ def get_prospects(conn, statuses=None, ticker=None):
         if ticker:
             cur.execute("""
                 SELECT pm.id prospect_id, pm.status, l.id listing_id,
-                       l.ticker, l.company_name, l.gics_sector
+                       l.ticker, l.company_name, l.gics_sector,
+                       l.principal_activities
                 FROM prospect_matrix pm JOIN asx_listings l ON l.id=pm.listing_id
                 WHERE l.ticker=%s AND l.is_active=TRUE
             """, (ticker.upper(),))
         else:
             cur.execute("""
                 SELECT pm.id prospect_id, pm.status, l.id listing_id,
-                       l.ticker, l.company_name, l.gics_sector
+                       l.ticker, l.company_name, l.gics_sector,
+                       l.principal_activities
                 FROM prospect_matrix pm JOIN asx_listings l ON l.id=pm.listing_id
                 WHERE pm.status=ANY(%s::prospect_status[]) AND l.is_active=TRUE
                 ORDER BY l.market_cap_aud DESC NULLS LAST
@@ -438,7 +479,32 @@ def get_prospects(conn, statuses=None, ticker=None):
         return cur.fetchall()
 
 
-def save_results(conn, prospect, signals, profile, announcements):
+def _calc_accessibility_score(principal_activities: str) -> int:
+    """
+    Score how accessible this company is to New Delta (Brisbane-based).
+    Baseline 5 for any ASX-listed company. Bonus points for known Australian
+    states/cities detected in principal_activities text.
+    """
+    # State keyword → bonus points to add to baseline of 5
+    STATE_BONUSES = {
+        r"\bqld\b|queensland|\bbrisbane\b":                  3,
+        r"\bwa\b|western australia|\bperth\b":               2,
+        r"\bnsw\b|new south wales|\bsydney\b":               2,
+        r"\bvic\b|victoria|\bmelbourne\b":                   1,
+        r"\bsa\b|south australia|\badelaide\b":              1,
+        r"\bnt\b|northern territory|\bdarwin\b":             1,
+        r"\btas\b|tasmania|\bhobart\b":                      1,
+        r"\bact\b|\bcanberra\b":                             1,
+    }
+    text = (principal_activities or "").lower()
+    bonus = 0
+    for pattern, pts in STATE_BONUSES.items():
+        if re.search(pattern, text, re.IGNORECASE):
+            bonus = max(bonus, pts)
+    return min(10, 5 + bonus)
+
+
+def save_results(conn, prospect, signals, profile, announcements, principal_activities=""):
     pid, lid, tk = prospect["prospect_id"], prospect["listing_id"], prospect["ticker"]
     with conn.cursor() as cur:
         inserted = 0
@@ -463,6 +529,7 @@ def save_results(conn, prospect, signals, profile, announcements):
 
         lk = max(1, min(10, int(profile["likelihood_score"])))
         lead_tier = calculate_lead_tier(signals)
+        accessibility = _calc_accessibility_score(principal_activities)
 
         cur.execute("""
             UPDATE prospect_matrix SET
@@ -471,15 +538,31 @@ def save_results(conn, prospect, signals, profile, announcements):
                 primary_headwind=COALESCE(%s,primary_headwind),
                 likelihood_score=COALESCE(%s,likelihood_score),
                 lead_tier=%s,
+                accessibility_score=%s,
                 status=CASE WHEN status IN ('unscreened','qualified')
                     THEN 'enriched'::prospect_status ELSE status END,
                 status_changed_by='enrichment_agent'
             WHERE id=%s
         """, (profile["strategic_direction"], profile["primary_tailwind"],
-              profile["primary_headwind"], lk, lead_tier, pid))
+              profile["primary_headwind"], lk, lead_tier, accessibility, pid))
 
         cur.execute("SELECT calculate_prospect_score(%s)", (pid,))
         score = cur.fetchone()[0]
+
+        # Calculate Size of Prize — runs in same transaction so uncommitted
+        # signals are visible to the query
+        try:
+            from prize_calculator import calculate_size_of_prize
+            prize = calculate_size_of_prize(conn, pid)
+            cur.execute("""
+                UPDATE prospect_matrix SET
+                    size_of_prize = %s,
+                    prize_breakdown = %s
+                WHERE id = %s
+            """, (prize["total_prize"], json.dumps(prize), pid))
+        except Exception as e:
+            logger.warning(f"{tk}: prize calc failed (non-fatal): {e}")
+
         cur.execute("""
             INSERT INTO enrichment_log
                 (listing_id, action, source_type, success,
@@ -489,7 +572,8 @@ def save_results(conn, prospect, signals, profile, announcements):
                     'enrichment_agent',NOW(),'rule-engine-v2')
         """, (lid, len(announcements), inserted))
         conn.commit()
-        logger.info(f"{tk}: {inserted} signals, likelihood={lk}, tier={lead_tier}, score={score}")
+        prize_fmt = f"${prize.get('total_prize', 0)/1e6:.1f}M" if 'prize' in dir() else "n/a"
+        logger.info(f"{tk}: {inserted} signals, likelihood={lk}, tier={lead_tier}, score={score}, prize={prize_fmt}, access={accessibility}")
 
 
 def rescore_all(conn):
@@ -527,7 +611,7 @@ def run_batch():
                         continue
                     signals = detect_signals(p["company_name"], anns)
                     profile = generate_profile(p["gics_sector"], signals)
-                    save_results(conn, p, signals, profile, anns)
+                    save_results(conn, p, signals, profile, anns, p.get("principal_activities") or "")
                     ok += 1
                 except Exception as e:
                     logger.error(f"{tk}: {e}")
@@ -554,7 +638,7 @@ def run_single(ticker):
             return
         signals = detect_signals(p["company_name"], anns)
         profile = generate_profile(p["gics_sector"], signals)
-        save_results(conn, p, signals, profile, anns)
+        save_results(conn, p, signals, profile, anns, p.get("principal_activities") or "")
     finally:
         conn.close()
 

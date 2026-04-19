@@ -13,6 +13,32 @@ const LEAD_TIERS = [
 const GOLD = '#D4AF37'
 const GOLD_DIM = '#555'
 
+function fmtPrize(dollars) {
+  if (!dollars || dollars === 0) return null
+  if (dollars >= 1_000_000) return `$${(dollars / 1_000_000).toFixed(1)}M`
+  if (dollars >= 1_000) return `$${Math.round(dollars / 1_000)}K`
+  return `$${dollars}`
+}
+
+function DealFitBadge({ prize }) {
+  if (!prize) return <span style={{ color: '#2d3a4d', fontFamily: 'monospace', fontSize: 9 }}>—</span>
+  if (prize >= 50_000_000) return (
+    <span className="font-mono" style={{ fontSize: 9, padding: '2px 5px', background: '#431407', border: '1px solid #c2410c', color: '#fb923c' }}>
+      ENTERPRISE
+    </span>
+  )
+  if (prize >= 5_000_000) return (
+    <span className="font-mono" style={{ fontSize: 9, padding: '2px 5px', background: '#052e16', border: '1px solid #14532d', color: '#22c55e' }}>
+      SWEET SPOT
+    </span>
+  )
+  return (
+    <span className="font-mono" style={{ fontSize: 9, padding: '2px 5px', background: '#111418', border: '1px solid #1e2530', color: '#6b7280' }}>
+      SMALL
+    </span>
+  )
+}
+
 function SortHeader({ label, field, sort, dir, onSort }) {
   const active = sort === field
   return (
@@ -135,6 +161,9 @@ export default function LeadMatrix({ watchlistOnly = false }) {
   const [hotFilter, setHotFilter] = useState(false)
   const [warmFilter, setWarmFilter] = useState(false)
 
+  const [prize10mFilter, setPrize10mFilter] = useState(false)
+  const [prize1mFilter, setPrize1mFilter] = useState(false)
+
   const [sort, setSort] = useState('total_signals')
   const [dir, setDir] = useState('desc')
   const [page, setPage] = useState(0)
@@ -159,6 +188,8 @@ export default function LeadMatrix({ watchlistOnly = false }) {
     if (sector) p.set('sector', sector)
     if (hasSignals) p.set('has_signals', 'true')
     if (wlFilter || watchlistOnly) p.set('watchlist', 'true')
+    if (prize10mFilter) p.set('min_prize', '10000000')
+    else if (prize1mFilter) p.set('min_prize', '1000000')
 
     // Chip-based tier overrides
     if (hotFilter) {
@@ -180,7 +211,7 @@ export default function LeadMatrix({ watchlistOnly = false }) {
       setError('Cannot reach the API — is the backend running?')
     }
     setLoading(false)
-  }, [search, sector, leadTier, hasSignals, wlFilter, hotFilter, warmFilter, watchlistOnly, sort, dir, page])
+  }, [search, sector, leadTier, hasSignals, wlFilter, hotFilter, warmFilter, prize10mFilter, prize1mFilter, watchlistOnly, sort, dir, page])
 
   useEffect(() => { load() }, [load])
 
@@ -233,10 +264,11 @@ export default function LeadMatrix({ watchlistOnly = false }) {
     setSearch(''); setSector(''); setLeadTier('')
     setHasSignals(false); setWlFilter(false)
     setHotFilter(false); setWarmFilter(false)
+    setPrize10mFilter(false); setPrize1mFilter(false)
     setPage(0)
   }
 
-  const hasFilters = search || sector || leadTier || hasSignals || wlFilter || hotFilter || warmFilter
+  const hasFilters = search || sector || leadTier || hasSignals || wlFilter || hotFilter || warmFilter || prize10mFilter || prize1mFilter
 
   const totalPages = Math.ceil(total / PAGE_SIZE)
 
@@ -256,6 +288,16 @@ export default function LeadMatrix({ watchlistOnly = false }) {
       id: 'signals', label: 'Has Signals', count: counts.has_signals,
       active: hasSignals,
       toggle: () => { setHasSignals(s => !s); setPage(0) },
+    },
+    {
+      id: 'prize10m', label: '$10M+ Impact',
+      active: prize10mFilter,
+      toggle: () => { setPrize10mFilter(f => !f); setPrize1mFilter(false); setPage(0) },
+    },
+    {
+      id: 'prize1m', label: '$1M–$10M',
+      active: prize1mFilter,
+      toggle: () => { setPrize1mFilter(f => !f); setPrize10mFilter(false); setPage(0) },
     },
     ...(!watchlistOnly ? [{
       id: 'watchlist', label: '★ Watchlist', count: counts.watchlist,
@@ -418,7 +460,7 @@ export default function LeadMatrix({ watchlistOnly = false }) {
       {(loading || data.length > 0) && (
         <div style={{ background: '#111418', border: '1px solid #1e2530' }}>
           <div style={{ overflowX: 'auto' }}>
-            <table className="w-full" style={{ minWidth: 1100 }}>
+            <table className="w-full" style={{ minWidth: 1400 }}>
               <thead>
                 <tr style={{ borderBottom: '1px solid #1e2530' }}>
                   <th className="px-3 py-2.5" style={{ width: 36 }} />
@@ -433,12 +475,15 @@ export default function LeadMatrix({ watchlistOnly = false }) {
                   <SortHeader label="Qual" field="sig_quality" sort={sort} dir={dir} onSort={handleSort} />
                   <SortHeader label="Future" field="sig_future" sort={sort} dir={dir} onSort={handleSort} />
                   <SortHeader label="Signals" field="total_signals" sort={sort} dir={dir} onSort={handleSort} />
+                  <SortHeader label="Access" field="accessibility_score" sort={sort} dir={dir} onSort={handleSort} />
+                  <SortHeader label="Est. Impact" field="size_of_prize" sort={sort} dir={dir} onSort={handleSort} />
+                  <th className="px-4 py-2.5 text-left font-mono text-xs uppercase" style={{ color: '#4a5a70', whiteSpace: 'nowrap' }}>Deal Fit</th>
                   <th className="px-4 py-2.5 text-left font-mono text-xs uppercase" style={{ color: '#4a5a70', whiteSpace: 'nowrap' }}>Top Signal</th>
                 </tr>
               </thead>
               <tbody>
                 {loading && (
-                  <tr><td colSpan={13} className="px-4 py-8 text-center font-mono text-xs" style={{ color: '#4a5a70' }}>Loading...</td></tr>
+                  <tr><td colSpan={17} className="px-4 py-8 text-center font-mono text-xs" style={{ color: '#4a5a70' }}>Loading...</td></tr>
                 )}
                 {!loading && data.map(p => {
                   const topSig = p.top_signal || ''
@@ -499,6 +544,18 @@ export default function LeadMatrix({ watchlistOnly = false }) {
                       {/* Total Signals */}
                       <td className="px-4 py-2.5 font-mono text-xs text-center" style={{ color: p.total_signals > 0 ? '#e2e8f0' : '#2d3a4d' }}>
                         {p.total_signals > 0 ? p.total_signals : '—'}
+                      </td>
+                      {/* Accessibility Score */}
+                      <td className="px-4 py-2.5 font-mono text-xs text-center" style={{ color: (p.accessibility_score || 5) >= 8 ? '#22c55e' : (p.accessibility_score || 5) >= 7 ? '#eab308' : '#8fa3bf' }}>
+                        {p.accessibility_score || 5}/10
+                      </td>
+                      {/* Est. Impact */}
+                      <td className="px-4 py-2.5 font-mono text-xs text-right" style={{ color: p.size_of_prize >= 5_000_000 ? '#22c55e' : p.size_of_prize > 0 ? '#8fa3bf' : '#2d3a4d' }}>
+                        {fmtPrize(p.size_of_prize) || '—'}
+                      </td>
+                      {/* Deal Fit */}
+                      <td className="px-4 py-2.5">
+                        <DealFitBadge prize={p.size_of_prize} />
                       </td>
                       {/* Top Signal */}
                       <td className="px-4 py-2.5 text-xs" style={{ color: '#8fa3bf', maxWidth: 260 }}>

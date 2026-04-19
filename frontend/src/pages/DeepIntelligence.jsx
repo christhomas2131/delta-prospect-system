@@ -6,6 +6,141 @@ const GOLD = '#D4AF37'
 const GOLD_BG = '#1a1508'
 const GOLD_BORDER = '#8B7120'
 
+const PILLAR_DISPLAY = {
+  production:         'Production',
+  license_to_operate: 'License to Operate',
+  cost:               'Cost',
+  people:             'People',
+  quality:            'Quality',
+  future_readiness:   'Future Readiness',
+}
+
+function fmtPrize(dollars) {
+  if (!dollars || dollars === 0) return null
+  if (dollars >= 1_000_000) return `$${(dollars / 1_000_000).toFixed(1)}M`
+  if (dollars >= 1_000) return `$${Math.round(dollars / 1_000)}K`
+  return `$${dollars}`
+}
+
+function DealFitBadge({ prize }) {
+  if (!prize) return null
+  if (prize >= 50_000_000) return (
+    <span className="font-mono" style={{ fontSize: 10, padding: '3px 8px', background: '#431407', border: '1px solid #c2410c', color: '#fb923c' }}>
+      ENTERPRISE
+    </span>
+  )
+  if (prize >= 5_000_000) return (
+    <span className="font-mono" style={{ fontSize: 10, padding: '3px 8px', background: '#052e16', border: '1px solid #14532d', color: '#22c55e' }}>
+      SWEET SPOT
+    </span>
+  )
+  return (
+    <span className="font-mono" style={{ fontSize: 10, padding: '3px 8px', background: '#111418', border: '1px solid #1e2530', color: '#6b7280' }}>
+      SMALL
+    </span>
+  )
+}
+
+function SizeOfPrize({ prospect }) {
+  const prize = prospect?.size_of_prize
+  const breakdown = prospect?.prize_breakdown
+
+  if (!prize && !breakdown) {
+    return (
+      <div className="card p-4 mb-4">
+        <div className="font-mono text-xs uppercase tracking-widest mb-2" style={{ color: '#4a5a70' }}>
+          Size of Prize
+        </div>
+        <div className="font-mono text-xs" style={{ color: '#2d3a4d' }}>
+          Run enrichment to calculate estimated impact.
+        </div>
+      </div>
+    )
+  }
+
+  const total = prize || 0
+  const pillars = breakdown?.breakdown_by_pillar || {}
+  const top3 = breakdown?.top_3_contributors || []
+  const maxPillar = Math.max(...Object.values(pillars), 1)
+
+  return (
+    <div className="card p-4 mb-4">
+      <div className="flex items-center justify-between mb-4">
+        <div className="font-mono text-xs uppercase tracking-widest" style={{ color: '#4a5a70' }}>
+          Size of Prize
+        </div>
+        <DealFitBadge prize={total} />
+      </div>
+
+      {/* Big number */}
+      <div className="mb-4">
+        <div className="font-mono text-xs mb-1" style={{ color: '#4a5a70' }}>ESTIMATED PROBLEM IMPACT</div>
+        <div className="font-mono font-bold" style={{
+          fontSize: 36,
+          color: total >= 50_000_000 ? '#fb923c' : total >= 5_000_000 ? '#22c55e' : '#8fa3bf',
+          lineHeight: 1,
+        }}>
+          {fmtPrize(total) || '$0'}
+        </div>
+      </div>
+
+      {/* Breakdown by pillar */}
+      {Object.keys(pillars).length > 0 && (
+        <div className="mb-4">
+          <div className="font-mono text-xs mb-2" style={{ color: '#4a5a70' }}>BREAKDOWN BY PILLAR</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {Object.entries(pillars)
+              .sort((a, b) => b[1] - a[1])
+              .map(([pillar, value]) => (
+                <div key={pillar} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div className="font-mono text-xs" style={{ color: '#8fa3bf', width: 140, flexShrink: 0 }}>
+                    {PILLAR_DISPLAY[pillar] || pillar}
+                  </div>
+                  <div style={{ flex: 1, height: 6, background: '#1e2530', position: 'relative' }}>
+                    <div style={{
+                      position: 'absolute', top: 0, left: 0, bottom: 0,
+                      width: `${Math.round((value / maxPillar) * 100)}%`,
+                      background: '#1e6fd4',
+                    }} />
+                  </div>
+                  <div className="font-mono text-xs" style={{ color: '#e2e8f0', width: 60, textAlign: 'right', flexShrink: 0 }}>
+                    {fmtPrize(value)}
+                  </div>
+                </div>
+              ))}
+          </div>
+        </div>
+      )}
+
+      {/* Top 3 contributors */}
+      {top3.length > 0 && (
+        <div className="mb-3">
+          <div className="font-mono text-xs mb-2" style={{ color: '#4a5a70' }}>TOP CONTRIBUTING SIGNALS</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            {top3.map((s, i) => (
+              <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: '6px 8px', background: '#0d1017', border: '1px solid #1e2530' }}>
+                <div className="font-mono text-xs" style={{ color: '#22c55e', flexShrink: 0 }}>
+                  {fmtPrize(s.value)}
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div className="font-mono text-xs" style={{ color: '#4a5a70' }}>
+                    {PILLAR_DISPLAY[s.pillar] || s.pillar}
+                  </div>
+                  <div className="text-xs" style={{ color: '#8fa3bf' }}>{s.summary}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="font-mono text-xs" style={{ color: '#2d3a4d', borderTop: '1px solid #1e2530', paddingTop: 8 }}>
+        Estimates based on industry heuristics. Not financial advice.
+      </div>
+    </div>
+  )
+}
+
 const STATUS_STEPS = [
   { value: 'unscreened', label: 'Unscreened' },
   { value: 'qualified', label: 'Qualified' },
@@ -930,7 +1065,10 @@ export default function DeepIntelligence() {
         </div>
       </div>
 
-      {/* 5. Actions card */}
+      {/* 5. Size of Prize */}
+      <SizeOfPrize prospect={prospect} />
+
+      {/* 6. Actions */}
       <div className="card p-4 mb-4">
         <div className="font-mono text-xs uppercase tracking-widest mb-3" style={{ color: '#4a5a70' }}>
           Actions
@@ -992,7 +1130,7 @@ export default function DeepIntelligence() {
         )}
       </div>
 
-      {/* 6. Pressure Signals table */}
+      {/* 7. Pressure Signals table */}
       <div className="card mb-4">
         <div className="px-4 py-3 flex items-center gap-3" style={{ borderBottom: '1px solid #1e2530' }}>
           <span className="font-mono text-xs uppercase tracking-widest" style={{ color: '#4a5a70' }}>
@@ -1104,7 +1242,7 @@ export default function DeepIntelligence() {
         )}
       </div>
 
-      {/* 7. Analyst Notes */}
+      {/* 8. Analyst Notes */}
       <div className="card p-4">
         <div className="font-mono text-xs uppercase tracking-widest mb-3" style={{ color: '#4a5a70' }}>
           Analyst Notes
