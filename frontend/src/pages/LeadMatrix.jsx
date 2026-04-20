@@ -125,11 +125,13 @@ export default function LeadMatrix({ watchlistOnly = false }) {
         const r = await fetch('/api/enrich/status')
         const d = await r.json()
         setEnrichProgress(d)
-        if (!d.running) {
+        // Keep polling while rule-based enrichment OR AI analysis is running
+        if (!d.running && !d.ai_running) {
           clearInterval(enrichPollRef.current)
           enrichPollRef.current = null
           setEnriching(false)
-          setToast({ ok: true, msg: `Enrichment complete — ${d.ok} enriched, ${d.skip} skipped, ${d.fail} failed` })
+          const aiNote = d.ai_total > 0 ? ` + AI analysis on ${d.ai_total} top prospects` : ''
+          setToast({ ok: true, msg: `Enrichment complete — ${d.ok} enriched, ${d.skip} skipped, ${d.fail} failed${aiNote}` })
           setTimeout(() => setToast(null), 10000)
           setTimeout(() => setEnrichProgress(null), 10000)
           load() // refresh the table
@@ -141,7 +143,7 @@ export default function LeadMatrix({ watchlistOnly = false }) {
   // Check if enrichment is already running on mount
   useEffect(() => {
     fetch('/api/enrich/status').then(r => r.json()).then(d => {
-      if (d.running) { setEnriching(true); setEnrichProgress(d); startPolling() }
+      if (d.running || d.ai_running) { setEnriching(true); setEnrichProgress(d); startPolling() }
     }).catch(() => {})
     return () => { if (enrichPollRef.current) clearInterval(enrichPollRef.current) }
   }, [])
@@ -395,22 +397,68 @@ export default function LeadMatrix({ watchlistOnly = false }) {
       {/* Enrichment Progress */}
       {enrichProgress && (
         <div className="mb-4 px-4 py-3 font-mono text-xs" style={{ background: '#111418', border: '1px solid #14532d' }}>
-          <div className="flex items-center justify-between mb-2">
-            <span style={{ color: '#22c55e' }}>
-              Enriching {enrichProgress.current} of {enrichProgress.total} — {enrichProgress.ticker}
-            </span>
-            <span style={{ color: '#4a5a70' }}>
-              {enrichProgress.ok} done · {enrichProgress.skip} skipped · {enrichProgress.fail} failed
-            </span>
-          </div>
-          <div style={{ width: '100%', height: 4, background: '#1e2530' }}>
+          {/* Phase 1: Rule-based enrichment */}
+          {!enrichProgress.ai_running && (
+            <div className="flex items-center justify-between mb-2">
+              <span style={{ color: '#22c55e' }}>
+                Enriching {enrichProgress.current} of {enrichProgress.total} — {enrichProgress.ticker}
+              </span>
+              <span style={{ color: '#4a5a70' }}>
+                {enrichProgress.ok} done · {enrichProgress.skip} skipped · {enrichProgress.fail} failed
+              </span>
+            </div>
+          )}
+          {/* Phase 2: AI deep analysis */}
+          {enrichProgress.ai_running && (
+            <div className="flex items-center justify-between mb-2">
+              <span style={{ color: '#D4AF37' }}>
+                ◆ AI analysis on top prospects — {enrichProgress.ai_ticker}
+              </span>
+              <span style={{ color: '#8B7120' }}>
+                {enrichProgress.ai_current} of {enrichProgress.ai_total}
+              </span>
+            </div>
+          )}
+          {/* Post-enrichment: AI analysis queued */}
+          {!enrichProgress.ai_running && enrichProgress.ai_total > 0 && enrichProgress.ai_current === 0 && (
+            <div className="mb-2" style={{ color: '#8B7120' }}>
+              ◆ AI analysis starting...
+            </div>
+          )}
+          {/* Progress bar */}
+          <div style={{ width: '100%', height: 4, background: '#1e2530', display: 'flex', gap: 2 }}>
+            {/* Enrichment bar */}
             <div style={{
-              width: `${enrichProgress.total > 0 ? (enrichProgress.current / enrichProgress.total * 100) : 0}%`,
+              flex: enrichProgress.ai_total > 0 ? '3 3 0' : '1 1 0',
               height: '100%',
-              background: '#22c55e',
-              transition: 'width 0.3s',
-            }} />
+              background: '#1e2530',
+              position: 'relative',
+            }}>
+              <div style={{
+                position: 'absolute', top: 0, left: 0, bottom: 0,
+                width: `${enrichProgress.total > 0 ? (enrichProgress.current / enrichProgress.total * 100) : 0}%`,
+                background: '#22c55e',
+                transition: 'width 0.3s',
+              }} />
+            </div>
+            {/* AI bar (only shown when AI phase is active or complete) */}
+            {enrichProgress.ai_total > 0 && (
+              <div style={{ flex: '1 1 0', height: '100%', background: '#1a1508', position: 'relative' }}>
+                <div style={{
+                  position: 'absolute', top: 0, left: 0, bottom: 0,
+                  width: `${enrichProgress.ai_total > 0 ? (enrichProgress.ai_current / enrichProgress.ai_total * 100) : 0}%`,
+                  background: '#D4AF37',
+                  transition: 'width 0.3s',
+                }} />
+              </div>
+            )}
           </div>
+          {enrichProgress.ai_total > 0 && (
+            <div className="flex justify-between mt-1">
+              <span style={{ color: '#22c55e', fontSize: 8 }}>RULE-BASED</span>
+              <span style={{ color: '#8B7120', fontSize: 8 }}>◆ AI DEEP ANALYSIS</span>
+            </div>
+          )}
         </div>
       )}
 

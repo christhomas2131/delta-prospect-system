@@ -52,7 +52,11 @@ _api_key_store: dict = {"key": None, "valid": False, "source": None}
 # In-memory enrichment progress tracker
 # ---------------------------------------------------------------------------
 
-_enrich_progress: dict = {"running": False, "current": 0, "total": 0, "ticker": "", "ok": 0, "skip": 0, "fail": 0}
+_enrich_progress: dict = {
+    "running": False, "current": 0, "total": 0, "ticker": "", "ok": 0, "skip": 0, "fail": 0,
+    # AI deep analysis phase (runs after main enrichment loop when API key is set)
+    "ai_running": False, "ai_current": 0, "ai_total": 0, "ai_ticker": "",
+}
 
 # ---------------------------------------------------------------------------
 # In-memory refresh progress tracker
@@ -804,105 +808,24 @@ def deep_analysis(prospect_id: str):
         if "error" in result:
             raise HTTPException(status_code=500, detail=result["error"])
 
-        with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            # Validate/invalidate existing signals
-            validated = result.get("validated_signals", [])
-            for v in validated:
-                idx = v.get("index", -1)
-                if 0 <= idx < len(existing_signals):
-                    sig = existing_signals[idx]
-                    new_confidence = 0.95 if v["confirmed"] else 0.20
-                    cur.execute("""
-                        UPDATE pressure_signals
-                        SET is_valid = %s,
-                            validated_by = 'claude-deep-v1',
-                            validated_at = NOW(),
-                            confidence_score = %s
-                        WHERE id = %s
-                    """, (v["confirmed"], new_confidence, sig["id"]))
+        inserted = _store_deep_analysis_result(
+            conn,
+            prospect_id=prospect_id,
+            listing_id=str(prospect["listing_id"]),
+            ticker=prospect["ticker"],
+            existing_signals=existing_signals,
+            result=result,
+        )
 
-            # Insert new AI-detected signals
-            new_signals = result.get("new_signals", [])
-            valid_pt = {"production","license_to_operate","cost","people","quality","future_readiness"}
-            valid_st = {"weak","moderate","strong"}
-            inserted = 0
-            for ns in new_signals:
-                pt = (ns.get("pressure_type") or "").lower()
-                st = (ns.get("strength") or "moderate").lower()
-                if pt not in valid_pt or st not in valid_st:
-                    continue
-                # Synthetic unique URL so the unique constraint works
-                source_url = (
-                    f"claude-deep://{prospect['ticker']}/{pt}/"
-                    f"{abs(hash(ns.get('summary','') + str(time.time())))}"
-                )
-                try:
-                    cur.execute("""
-                        INSERT INTO pressure_signals
-                            (prospect_id, pressure_type, strength, summary,
-                             source_type, source_url, source_title,
-                             confidence_score, model_version, extracted_quote, is_valid)
-                        VALUES (%s,%s,%s,%s,'asx_announcement',%s,%s,
-                                0.75,'claude-deep-v1',%s,TRUE)
-                        ON CONFLICT (prospect_id, pressure_type, source_url) DO NOTHING
-                    """, (
-                        prospect_id, pt, st,
-                        ns.get("summary", ""),
-                        source_url,
-                        ns.get("source_title", ""),
-                        ns.get("reasoning", ""),
-                    ))
-                    inserted += cur.rowcount
-                except Exception as exc:
-                    logger.error("Failed to insert AI signal: %s", exc)
+        tokens_used = result.get("tokens_used", 0)
+        validated = result.get("validated_signals", [])
+        profile = result.get("refined_profile", {})
 
-            # Update strategic profile + extended deep analysis fields
-            profile = result.get("refined_profile", {})
-            if profile:
-                lk = max(1, min(10, int(profile.get("likelihood_score") or 5)))
-                cur.execute("""
-                    UPDATE prospect_matrix SET
-                        strategic_direction  = COALESCE(%s, strategic_direction),
-                        primary_tailwind     = COALESCE(%s, primary_tailwind),
-                        primary_headwind     = COALESCE(%s, primary_headwind),
-                        likelihood_score     = %s,
-                        key_pressures        = COALESCE(%s, key_pressures),
-                        nd_fit_assessment    = COALESCE(%s, nd_fit_assessment),
-                        outreach_hypothesis  = COALESCE(%s, outreach_hypothesis),
-                        red_flags            = COALESCE(%s, red_flags),
-                        prize_ai_assessment  = COALESCE(%s, prize_ai_assessment)
-                    WHERE id = %s
-                """, (
-                    profile.get("strategic_direction"),
-                    profile.get("primary_tailwind"),
-                    profile.get("primary_headwind"),
-                    lk,
-                    profile.get("key_pressures"),
-                    profile.get("nd_fit_assessment"),
-                    result.get("outreach_hypothesis"),
-                    result.get("red_flags"),
-                    result.get("prize_assessment"),
-                    prospect_id,
-                ))
-
-            # Recalculate score
-            cur.execute("SELECT calculate_prospect_score(%s)", (prospect_id,))
-            new_score = cur.fetchone()["calculate_prospect_score"]
-
-            # Audit log
-            tokens_used = result.get("tokens_used", 0)
-            anns = result.get("announcements", [])
-            confirmed_count = sum(1 for v in validated if v.get("confirmed"))
-            cur.execute("""
-                INSERT INTO enrichment_log
-                    (listing_id, action, source_type, success,
-                     documents_processed, signals_found,
-                     triggered_by, completed_at, agent_version, tokens_used)
-                VALUES (%s,'deep_analysis','asx_announcement',TRUE,%s,%s,
-                        'api',NOW(),'claude-deep-v1',%s)
-            """, (prospect["listing_id"], len(anns), confirmed_count + inserted, tokens_used))
-
-            conn.commit()
+        # Read back updated score for the response
+        with conn.cursor() as cur:
+            cur.execute("SELECT prospect_score FROM prospect_matrix WHERE id = %s", (prospect_id,))
+            row = cur.fetchone()
+            new_score = float(row[0]) if row and row[0] else 0.0
 
         return {
             "prospect_id": prospect_id,
@@ -912,7 +835,7 @@ def deep_analysis(prospect_id: str):
             "confirmed_count": sum(1 for v in validated if v.get("confirmed")),
             "disputed_count": sum(1 for v in validated if not v.get("confirmed")),
             "new_signals_count": inserted,
-            "new_score": float(new_score or 0),
+            "new_score": new_score,
             "profile": profile,
             "validated_signals": validated,
         }
@@ -1167,6 +1090,213 @@ def get_latest_refresh():
         put_conn(conn)
 
 
+def _store_deep_analysis_result(conn, prospect_id: str, listing_id: str,
+                                ticker: str, existing_signals: list, result: dict) -> int:
+    """
+    Persist deep analysis output to the database.
+    Shared by the manual endpoint and the auto-batch runner.
+    Returns the number of new AI signals inserted.
+    """
+    import json as _json
+    from prize_calculator import calculate_size_of_prize
+
+    valid_pt = {"production","license_to_operate","cost","people","quality","future_readiness"}
+    valid_st = {"weak","moderate","strong"}
+    inserted = 0
+
+    with conn.cursor(cursor_factory=RealDictCursor) as cur:
+        # Validate/invalidate existing rule-based signals
+        validated = result.get("validated_signals", [])
+        for v in validated:
+            idx = v.get("index", -1)
+            if 0 <= idx < len(existing_signals):
+                sig = existing_signals[idx]
+                new_conf = 0.95 if v["confirmed"] else 0.20
+                cur.execute("""
+                    UPDATE pressure_signals
+                    SET is_valid = %s, validated_by = 'claude-deep-v1',
+                        validated_at = NOW(), confidence_score = %s
+                    WHERE id = %s
+                """, (v["confirmed"], new_conf, sig["id"]))
+
+        # Insert new AI-detected signals
+        for ns in result.get("new_signals", []):
+            pt = (ns.get("pressure_type") or "").lower()
+            st = (ns.get("strength") or "moderate").lower()
+            if pt not in valid_pt or st not in valid_st:
+                continue
+            source_url = (
+                f"claude-deep://{ticker}/{pt}/"
+                f"{abs(hash(ns.get('summary','') + str(time.time())))}"
+            )
+            try:
+                cur.execute("""
+                    INSERT INTO pressure_signals
+                        (prospect_id, pressure_type, strength, summary,
+                         source_type, source_url, source_title,
+                         confidence_score, model_version, extracted_quote, is_valid)
+                    VALUES (%s,%s,%s,%s,'asx_announcement',%s,%s,
+                            0.75,'claude-deep-v1',%s,TRUE)
+                    ON CONFLICT (prospect_id, pressure_type, source_url) DO NOTHING
+                """, (prospect_id, pt, st, ns.get("summary",""),
+                      source_url, ns.get("source_title",""), ns.get("reasoning","")))
+                inserted += cur.rowcount
+            except Exception as exc:
+                logger.error("Failed to insert AI signal for %s: %s", ticker, exc)
+
+        # Update strategic profile + extended deep analysis fields
+        profile = result.get("refined_profile", {})
+        if profile:
+            lk = max(1, min(10, int(profile.get("likelihood_score") or 5)))
+            cur.execute("""
+                UPDATE prospect_matrix SET
+                    strategic_direction  = COALESCE(%s, strategic_direction),
+                    primary_tailwind     = COALESCE(%s, primary_tailwind),
+                    primary_headwind     = COALESCE(%s, primary_headwind),
+                    likelihood_score     = %s,
+                    key_pressures        = COALESCE(%s, key_pressures),
+                    nd_fit_assessment    = COALESCE(%s, nd_fit_assessment),
+                    outreach_hypothesis  = COALESCE(%s, outreach_hypothesis),
+                    red_flags            = COALESCE(%s, red_flags),
+                    prize_ai_assessment  = COALESCE(%s, prize_ai_assessment)
+                WHERE id = %s
+            """, (
+                profile.get("strategic_direction"), profile.get("primary_tailwind"),
+                profile.get("primary_headwind"), lk,
+                profile.get("key_pressures"), profile.get("nd_fit_assessment"),
+                result.get("outreach_hypothesis"), result.get("red_flags"),
+                result.get("prize_assessment"), prospect_id,
+            ))
+
+        # Recalculate prospect score
+        cur.execute("SELECT calculate_prospect_score(%s)", (prospect_id,))
+
+        # Recalculate prize now that new AI signals may have been added
+        try:
+            prize = calculate_size_of_prize(conn, prospect_id)
+            cur.execute("""
+                UPDATE prospect_matrix SET size_of_prize = %s, prize_breakdown = %s
+                WHERE id = %s
+            """, (prize["total_prize"], _json.dumps(prize), prospect_id))
+        except Exception as exc:
+            logger.warning("Prize recalc failed after deep analysis for %s: %s", ticker, exc)
+
+        # Audit log
+        tokens_used = result.get("tokens_used", 0)
+        anns = result.get("announcements", [])
+        confirmed_count = sum(1 for v in validated if v.get("confirmed"))
+        cur.execute("""
+            INSERT INTO enrichment_log
+                (listing_id, action, source_type, success,
+                 documents_processed, signals_found,
+                 triggered_by, completed_at, agent_version, tokens_used)
+            VALUES (%s,'deep_analysis','asx_announcement',TRUE,%s,%s,
+                    'auto_batch',NOW(),'claude-deep-v1',%s)
+        """, (listing_id, len(anns), confirmed_count + inserted, tokens_used))
+
+        conn.commit()
+
+    logger.info("%s: deep analysis stored — %d new signals, %d tokens", ticker, inserted, tokens_used)
+    return inserted
+
+
+def _auto_deep_analysis(conn):
+    """
+    Run Deep Analysis on the top 10 prospects by total signal count.
+    Called automatically after Enrich All if an Anthropic API key is configured.
+    Updates _enrich_progress with ai_* fields so the frontend can show progress.
+    """
+    import time as _time
+
+    if not _api_key_store.get("valid") or not _api_key_store.get("key"):
+        logger.info("Auto deep analysis skipped — no valid API key configured")
+        return
+
+    from deep_analysis import run_deep_analysis as _run_deep
+
+    # Select top 10 by signal count
+    with conn.cursor(cursor_factory=RealDictCursor) as cur:
+        cur.execute("""
+            SELECT pm.id AS prospect_id, pm.listing_id,
+                   pm.size_of_prize, pm.prize_breakdown,
+                   l.ticker, l.company_name, l.gics_sector,
+                   COUNT(ps.id) AS signal_count
+            FROM prospect_matrix pm
+            JOIN asx_listings l ON l.id = pm.listing_id
+            LEFT JOIN pressure_signals ps ON ps.prospect_id = pm.id
+            WHERE l.is_active = TRUE AND l.is_target_sector = TRUE
+            GROUP BY pm.id, pm.listing_id, pm.size_of_prize, pm.prize_breakdown,
+                     l.ticker, l.company_name, l.gics_sector
+            ORDER BY signal_count DESC NULLS LAST
+            LIMIT 10
+        """)
+        top_10 = cur.fetchall()
+
+    if not top_10:
+        return
+
+    _enrich_progress["ai_running"] = True
+    _enrich_progress["ai_total"] = len(top_10)
+    _enrich_progress["ai_current"] = 0
+    _enrich_progress["ai_ticker"] = ""
+    logger.info("Auto deep analysis starting on %d top prospects", len(top_10))
+
+    for i, p in enumerate(top_10):
+        tk = p["ticker"]
+        prospect_id = str(p["prospect_id"])
+        listing_id = str(p["listing_id"])
+
+        _enrich_progress["ai_current"] = i + 1
+        _enrich_progress["ai_ticker"] = tk
+
+        try:
+            # Load existing signals for this prospect
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("""
+                    SELECT id, pressure_type, strength, summary, source_url,
+                           source_title, model_version
+                    FROM pressure_signals WHERE prospect_id = %s
+                    ORDER BY detected_at
+                """, (prospect_id,))
+                existing_signals = list(cur.fetchall())
+
+            # Get deal_fit from prize_breakdown
+            pb = p.get("prize_breakdown") or {}
+            if isinstance(pb, str):
+                import json as _json2
+                pb = _json2.loads(pb)
+            deal_fit = pb.get("deal_fit", "") if isinstance(pb, dict) else ""
+
+            result = _run_deep(
+                prospect_id=prospect_id,
+                ticker=tk,
+                company_name=p["company_name"],
+                sector=p["gics_sector"],
+                existing_signals=existing_signals,
+                api_key=_api_key_store["key"],
+                size_of_prize=int(p.get("size_of_prize") or 0),
+                deal_fit=deal_fit,
+            )
+
+            if "error" in result:
+                logger.warning("Auto deep analysis error for %s: %s", tk, result["error"])
+            else:
+                _store_deep_analysis_result(
+                    conn, prospect_id, listing_id, tk, existing_signals, result
+                )
+
+        except Exception as exc:
+            logger.error("Auto deep analysis failed for %s: %s", tk, exc)
+
+        # Delay between calls to avoid rate limiting (skip after last)
+        if i < len(top_10) - 1:
+            _time.sleep(2.0)
+
+    _enrich_progress["ai_running"] = False
+    _enrich_progress["ai_ticker"] = ""
+    logger.info("Auto deep analysis complete")
+
+
 def _run_batch_with_progress():
     """Wrapper around enrichment run_batch that tracks progress.
     Processes ALL target sector companies, not just unscreened/qualified."""
@@ -1180,6 +1310,10 @@ def _run_batch_with_progress():
     _enrich_progress["skip"] = 0
     _enrich_progress["fail"] = 0
     _enrich_progress["ticker"] = ""
+    _enrich_progress["ai_running"] = False
+    _enrich_progress["ai_current"] = 0
+    _enrich_progress["ai_total"] = 0
+    _enrich_progress["ai_ticker"] = ""
 
     conn = enrich_conn()
     try:
@@ -1215,11 +1349,15 @@ def _run_batch_with_progress():
                 except Exception as e:
                     logger.error(f"{tk}: {e}")
                     _enrich_progress["fail"] += 1
+        # Auto deep analysis on top 10 by signal count (if API key is set)
+        _auto_deep_analysis(conn)
+
     except Exception as e:
         logger.error(f"Batch enrichment failed: {e}")
     finally:
         conn.close()
         _enrich_progress["running"] = False
+        _enrich_progress["ai_running"] = False
         logger.info(f"Batch enrichment finished: {_enrich_progress['ok']} ok, {_enrich_progress['skip']} skip, {_enrich_progress['fail']} fail")
 
 
@@ -1251,15 +1389,19 @@ def trigger_batch_enrichment(background_tasks: BackgroundTasks):
 
 @app.get("/api/enrich/status")
 def get_enrichment_status():
-    """Return current enrichment progress."""
+    """Return current enrichment progress, including AI deep analysis phase."""
     return {
-        "running": _enrich_progress["running"],
-        "current": _enrich_progress["current"],
-        "total": _enrich_progress["total"],
-        "ticker": _enrich_progress["ticker"],
-        "ok": _enrich_progress["ok"],
-        "skip": _enrich_progress["skip"],
-        "fail": _enrich_progress["fail"],
+        "running":    _enrich_progress["running"],
+        "current":    _enrich_progress["current"],
+        "total":      _enrich_progress["total"],
+        "ticker":     _enrich_progress["ticker"],
+        "ok":         _enrich_progress["ok"],
+        "skip":       _enrich_progress["skip"],
+        "fail":       _enrich_progress["fail"],
+        "ai_running": _enrich_progress["ai_running"],
+        "ai_current": _enrich_progress["ai_current"],
+        "ai_total":   _enrich_progress["ai_total"],
+        "ai_ticker":  _enrich_progress["ai_ticker"],
     }
 
 
