@@ -24,6 +24,8 @@ COPY asx_scraper.py .
 COPY asx_browser.py .
 COPY enrichment_agent.py .
 COPY deep_analysis.py .
+COPY prize_calculator.py .
+COPY v3_intelligence.py .
 COPY schema.sql .
 
 EXPOSE ${PORT:-8000}
