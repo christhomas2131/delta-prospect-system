@@ -61,6 +61,12 @@ DO $$ BEGIN
         -- Drop the numeric score; replaced by text location fields
         ALTER TABLE prospect_matrix DROP COLUMN IF EXISTS accessibility_score;
         -- Location fields
+        ALTER TABLE asx_listings ADD COLUMN IF NOT EXISTS registered_address_raw TEXT;
+        ALTER TABLE asx_listings ADD COLUMN IF NOT EXISTS registered_city TEXT;
+        ALTER TABLE asx_listings ADD COLUMN IF NOT EXISTS registered_state TEXT;
+        ALTER TABLE asx_listings ADD COLUMN IF NOT EXISTS registered_country TEXT;
+        ALTER TABLE asx_listings ADD COLUMN IF NOT EXISTS location_source TEXT;
+        ALTER TABLE asx_listings ADD COLUMN IF NOT EXISTS location_confidence NUMERIC(3,2);
         ALTER TABLE prospect_matrix ADD COLUMN IF NOT EXISTS registered_city  TEXT;
         ALTER TABLE prospect_matrix ADD COLUMN IF NOT EXISTS registered_state TEXT;
         ALTER TABLE prospect_matrix ADD COLUMN IF NOT EXISTS in_australia      BOOLEAN DEFAULT TRUE;
@@ -140,6 +146,12 @@ CREATE TABLE IF NOT EXISTS asx_listings (
     last_price_aud       INTEGER,         -- cents
     website              TEXT,
     principal_activities TEXT,
+    registered_address_raw TEXT,
+    registered_city      TEXT,
+    registered_state     TEXT,
+    registered_country   TEXT,
+    location_source      TEXT,
+    location_confidence  NUMERIC(3,2) CHECK (location_confidence BETWEEN 0 AND 1),
     first_seen_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     last_refreshed_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     is_active            BOOLEAN DEFAULT TRUE,
@@ -196,7 +208,7 @@ CREATE TABLE IF NOT EXISTS prospect_matrix (
     size_of_prize            BIGINT,
     prize_breakdown          JSONB,
 
-    -- v2.2: Location fields (from principal_activities text detection)
+    -- v2.2+: Location fields (prefer ASX company detail address, fallback to heuristics)
     registered_city          TEXT,
     registered_state         TEXT,
     in_australia             BOOLEAN DEFAULT TRUE,
@@ -290,6 +302,55 @@ CREATE TABLE IF NOT EXISTS enrichment_log (
 
 CREATE INDEX IF NOT EXISTS idx_enrich_listing ON enrichment_log (listing_id);
 CREATE INDEX IF NOT EXISTS idx_enrich_started ON enrichment_log (started_at DESC);
+
+-- ============================================================================
+-- V3 DOCUMENT INTELLIGENCE â€” full announcement/report content + analysis runs
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS announcement_documents (
+    id                UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    listing_id        UUID NOT NULL REFERENCES asx_listings(id) ON DELETE CASCADE,
+    source_url        TEXT NOT NULL,
+    source_title      TEXT,
+    source_date       DATE,
+    document_type     TEXT NOT NULL DEFAULT 'announcement',
+    provider          TEXT NOT NULL DEFAULT 'firecrawl',
+    fetch_status      TEXT NOT NULL DEFAULT 'pending',
+    content_markdown  TEXT,
+    content_text      TEXT,
+    metadata          JSONB,
+    content_hash      TEXT,
+    last_error        TEXT,
+    fetched_at        TIMESTAMPTZ,
+    created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT uq_announcement_document UNIQUE (listing_id, source_url)
+);
+
+CREATE INDEX IF NOT EXISTS idx_announcement_documents_listing
+    ON announcement_documents (listing_id, source_date DESC NULLS LAST, fetched_at DESC NULLS LAST);
+CREATE INDEX IF NOT EXISTS idx_announcement_documents_status
+    ON announcement_documents (fetch_status, fetched_at DESC NULLS LAST);
+
+CREATE TABLE IF NOT EXISTS prospect_intelligence_runs (
+    id                UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    prospect_id       UUID NOT NULL REFERENCES prospect_matrix(id) ON DELETE CASCADE,
+    listing_id        UUID NOT NULL REFERENCES asx_listings(id) ON DELETE CASCADE,
+    analysis_type     TEXT NOT NULL DEFAULT 'gap_analysis_v1',
+    provider          TEXT,
+    model_name        TEXT,
+    status            TEXT NOT NULL DEFAULT 'completed',
+    source_count      INTEGER NOT NULL DEFAULT 0,
+    summary           TEXT,
+    output_json       JSONB,
+    created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    completed_at      TIMESTAMPTZ
+);
+
+CREATE INDEX IF NOT EXISTS idx_intelligence_runs_prospect
+    ON prospect_intelligence_runs (prospect_id, completed_at DESC NULLS LAST);
+CREATE INDEX IF NOT EXISTS idx_intelligence_runs_listing
+    ON prospect_intelligence_runs (listing_id, completed_at DESC NULLS LAST);
 
 -- ============================================================================
 -- GICS SECTOR MAP — reference table for sector filtering

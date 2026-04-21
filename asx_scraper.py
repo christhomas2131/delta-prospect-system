@@ -15,7 +15,7 @@ Usage:
     python asx_scraper.py --mode single --ticker BHP
 """
 
-import csv, io, logging, argparse, sys, os
+import csv, io, logging, argparse, sys, os, re, time
 from datetime import datetime, timezone
 from typing import Optional
 from dataclasses import dataclass, field
@@ -29,9 +29,12 @@ from psycopg2.extras import execute_values, RealDictCursor
 # ---------------------------------------------------------------------------
 
 ASX_CSV_URL = "https://www.asx.com.au/asx/research/ASXListedCompanies.csv"
-ASX_COMPANY_URL = "https://www.asx.com.au/asx/1/company/{ticker}"
+ASX_COMPANY_ABOUT_URL = "https://cdn-api.markitdigital.com/apiman-gateway/ASX/asx-research/1.0/companies/{ticker}/about?v=undefined"
+ASX_COMPANY_HEADER_URL = "https://asx.api.markitdigital.com/asx-research/1.0/companies/{ticker}/header"
+MARKIT_TOKEN = "83ff96335c2d45a094df02a206a39ff4"
 
 HTTP_TIMEOUT = 30
+DETAIL_REQUEST_DELAY = 0.35
 HTTP_HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -40,6 +43,13 @@ HTTP_HEADERS = {
     ),
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
     "Accept-Language": "en-AU,en;q=0.9",
+}
+
+MARKIT_API_HEADERS = {
+    **HTTP_HEADERS,
+    "Authorization": f"Bearer {MARKIT_TOKEN}",
+    "Accept": "application/json, text/plain, */*",
+    "Referer": "https://www.asx.com.au/",
 }
 
 def _parse_database_url(url: str) -> dict:
@@ -108,6 +118,30 @@ logging.basicConfig(
 )
 logger = logging.getLogger("asx_scraper")
 
+AU_STATE_ALIASES = {
+    "NSW": "NSW",
+    "NEW SOUTH WALES": "NSW",
+    "VIC": "VIC",
+    "VICTORIA": "VIC",
+    "QLD": "QLD",
+    "QUEENSLAND": "QLD",
+    "WA": "WA",
+    "WESTERN AUSTRALIA": "WA",
+    "SA": "SA",
+    "SOUTH AUSTRALIA": "SA",
+    "TAS": "TAS",
+    "TASMANIA": "TAS",
+    "ACT": "ACT",
+    "AUSTRALIAN CAPITAL TERRITORY": "ACT",
+    "NT": "NT",
+    "NORTHERN TERRITORY": "NT",
+}
+
+NON_AU_COUNTRY_HINTS = {
+    "NEW ZEALAND", "SINGAPORE", "UNITED STATES", "USA", "UNITED KINGDOM", "UK",
+    "CANADA", "HONG KONG", "CHINA", "JAPAN",
+}
+
 # ---------------------------------------------------------------------------
 # Data models
 # ---------------------------------------------------------------------------
@@ -173,28 +207,202 @@ def parse_asx_csv(csv_text: str) -> list[ASXListing]:
     logger.info(f"Parsed {len(listings):,} listings ({skipped} skipped)")
     return listings
 
+
+def _clean_text(value) -> str:
+    if value is None:
+        return ""
+    text = str(value).strip()
+    text = re.sub(r"\s+", " ", text)
+    return text
+
+
+def _normalize_state(value: str) -> Optional[str]:
+    if not value:
+        return None
+    key = _clean_text(value).upper().strip(",")
+    return AU_STATE_ALIASES.get(key)
+
+
+def _extract_address_from_text(text: str) -> Optional[dict]:
+    text = _clean_text(text)
+    if not text:
+        return None
+
+    m = re.search(
+        r"(?P<city>[A-Za-z][A-Za-z .'\-]{1,60}?)[,\s]+"
+        r"(?P<state>NSW|VIC|QLD|WA|SA|TAS|ACT|NT|"
+        r"New South Wales|Victoria|Queensland|Western Australia|South Australia|Tasmania|Australian Capital Territory|Northern Territory)"
+        r"(?:,\s*AUSTRALIA)?(?:,\s*|\s+)(?P<postcode>\d{4})\b",
+        text,
+        re.IGNORECASE,
+    )
+    if m:
+        city = _clean_text(m.group("city")).title()
+        state = _normalize_state(m.group("state"))
+        country = "Australia"
+        return {
+            "raw_address": text,
+            "city": city,
+            "state": state,
+            "country": country,
+            "in_australia": True,
+            "confidence": 0.92,
+        }
+
+    upper_text = text.upper()
+    for country in NON_AU_COUNTRY_HINTS:
+        if country in upper_text:
+            return {
+                "raw_address": text,
+                "city": None,
+                "state": None,
+                "country": country.title(),
+                "in_australia": False,
+                "confidence": 0.65,
+            }
+
+    if "AUSTRALIA" in upper_text:
+        return {
+            "raw_address": text,
+            "city": None,
+            "state": None,
+            "country": "Australia",
+            "in_australia": True,
+            "confidence": 0.55,
+        }
+
+    return None
+
+
+def _collect_address_candidates(value, path="root") -> list[tuple[str, str]]:
+    candidates: list[tuple[str, str]] = []
+    if isinstance(value, dict):
+        # Prefer explicit structured address/location objects when present.
+        likely_keys = (
+            "registered_office", "registered_office_address", "office_address",
+            "principal_place_of_business", "principal_place_of_business_address",
+            "address", "addresses", "head_office", "location", "contact",
+        )
+        joined_parts = []
+        if any(k in path.lower() for k in likely_keys):
+            for k, v in value.items():
+                if isinstance(v, (str, int, float)):
+                    joined_parts.append(_clean_text(v))
+            joined = ", ".join(part for part in joined_parts if part)
+            if joined:
+                candidates.append((path, joined))
+
+        for k, v in value.items():
+            next_path = f"{path}.{k}"
+            if isinstance(v, (dict, list)):
+                candidates.extend(_collect_address_candidates(v, next_path))
+            elif isinstance(v, str):
+                lower_key = k.lower()
+                if any(token in lower_key for token in ("address", "office", "location", "place", "country", "city", "state")):
+                    text = _clean_text(v)
+                    if text:
+                        candidates.append((next_path, text))
+    elif isinstance(value, list):
+        for idx, item in enumerate(value):
+            candidates.extend(_collect_address_candidates(item, f"{path}[{idx}]"))
+    return candidates
+
+
+def extract_location_from_company_payload(payload: dict) -> dict:
+    default = {
+        "raw_address": None,
+        "city": None,
+        "state": None,
+        "country": None,
+        "in_australia": None,
+        "source": None,
+        "confidence": None,
+    }
+
+    # First pass: structured object keys if ASX exposes them.
+    for key in (
+        "registered_office", "registered_office_address", "office_address",
+        "principal_place_of_business", "principal_place_of_business_address",
+        "address", "head_office", "location",
+    ):
+        val = payload.get(key)
+        if isinstance(val, dict):
+            city = _clean_text(val.get("city") or val.get("suburb")) or None
+            state = _normalize_state(val.get("state") or val.get("state_code") or val.get("region"))
+            country = _clean_text(val.get("country")) or None
+            raw_parts = [
+                _clean_text(val.get("line1") or val.get("address_line_1") or val.get("street")),
+                _clean_text(val.get("line2") or val.get("address_line_2")),
+                city,
+                state,
+                _clean_text(val.get("postcode") or val.get("postal_code")),
+                country,
+            ]
+            raw_address = ", ".join(part for part in raw_parts if part) or None
+            if city or state or country or raw_address:
+                in_australia = True if (country or "").strip().lower() == "australia" or state in AU_STATE_ALIASES.values() else None
+                return {
+                    "raw_address": raw_address,
+                    "city": city.title() if city else None,
+                    "state": state,
+                    "country": country.title() if country else ("Australia" if in_australia else None),
+                    "in_australia": in_australia,
+                    "source": f"asx_company_api:{key}",
+                    "confidence": 0.98 if city and state else 0.88,
+                }
+
+    # Second pass: mine address-like text blocks anywhere in the payload.
+    for path, candidate in _collect_address_candidates(payload):
+        parsed = _extract_address_from_text(candidate)
+        if parsed:
+            parsed["source"] = f"asx_company_api:{path}"
+            return parsed
+
+    # Fallback: principal activities sometimes mentions Australian locality.
+    parsed = _extract_address_from_text(payload.get("principal_activities") or "")
+    if parsed:
+        parsed["source"] = "principal_activities_heuristic"
+        parsed["confidence"] = min(parsed["confidence"] or 0.5, 0.5)
+        return parsed
+
+    return default
+
 # ---------------------------------------------------------------------------
 # ASX JSON API (single-company enrichment)
 # ---------------------------------------------------------------------------
 
 def fetch_company_detail(client: httpx.Client, ticker: str) -> Optional[dict]:
     try:
-        resp = client.get(
-            ASX_COMPANY_URL.format(ticker=ticker),
+        about_resp = client.get(
+            ASX_COMPANY_ABOUT_URL.format(ticker=ticker),
+            headers=MARKIT_API_HEADERS,
             follow_redirects=True,
         )
-        if resp.status_code != 200:
-            logger.warning(f"ASX API {resp.status_code} for {ticker}")
+        header_resp = client.get(
+            ASX_COMPANY_HEADER_URL.format(ticker=ticker),
+            headers=MARKIT_API_HEADERS,
+            follow_redirects=True,
+        )
+        if about_resp.status_code != 200 or header_resp.status_code != 200:
+            logger.warning(f"ASX company detail API returned {about_resp.status_code}/{header_resp.status_code} for {ticker}")
             return None
 
-        d = resp.json()
-        ps = d.get("primary_share", {}) or {}
+        about = (about_resp.json() or {}).get("data") or {}
+        header = (header_resp.json() or {}).get("data") or {}
+        location = extract_location_from_company_payload(about)
         return {
-            "listing_date": (d.get("listing_date") or "")[:10] or None,
-            "website": d.get("web_address"),
-            "principal_activities": d.get("principal_activities"),
-            "market_cap_aud": int(float(ps["market_cap"]) * 100) if ps.get("market_cap") else None,
-            "last_price_aud": int(float(ps["last_price"]) * 100) if ps.get("last_price") else None,
+            "listing_date": (header.get("dateListed") or "")[:10] or None,
+            "website": about.get("websiteUrl"),
+            "principal_activities": about.get("description"),
+            "market_cap_aud": int(float(header["marketCap"]) * 100) if header.get("marketCap") else None,
+            "last_price_aud": int(float(header["priceLast"]) * 100) if header.get("priceLast") else None,
+            "registered_address_raw": location["raw_address"],
+            "registered_city": location["city"],
+            "registered_state": location["state"],
+            "registered_country": location["country"],
+            "in_australia": location["in_australia"],
+            "location_source": location["source"],
+            "location_confidence": location["confidence"],
         }
     except Exception as e:
         logger.error(f"Detail fetch failed for {ticker}: {e}")
@@ -296,6 +504,106 @@ def backfill_prospect_matrix(conn) -> int:
         return n
 
 
+def update_company_detail(conn, ticker: str, detail: dict, triggered_by: str) -> None:
+    with conn.cursor() as cur:
+        cur.execute("""
+            UPDATE asx_listings SET
+                listing_date=%s,
+                website=COALESCE(%s, website),
+                principal_activities=COALESCE(%s, principal_activities),
+                market_cap_aud=COALESCE(%s, market_cap_aud),
+                last_price_aud=COALESCE(%s, last_price_aud),
+                registered_address_raw=%s,
+                registered_city=%s,
+                registered_state=%s,
+                registered_country=%s,
+                location_source=%s,
+                location_confidence=%s,
+                last_refreshed_at=NOW()
+            WHERE ticker=%s
+        """, (
+            detail["listing_date"],
+            detail["website"],
+            detail["principal_activities"],
+            detail["market_cap_aud"],
+            detail["last_price_aud"],
+            detail["registered_address_raw"],
+            detail["registered_city"],
+            detail["registered_state"],
+            detail["registered_country"],
+            detail["location_source"],
+            detail["location_confidence"],
+            ticker,
+        ))
+
+        cur.execute("""
+            UPDATE prospect_matrix pm
+            SET
+                registered_city = %s,
+                registered_state = %s,
+                in_australia = COALESCE(%s, FALSE)
+            FROM asx_listings l
+            WHERE l.id = pm.listing_id
+              AND l.ticker = %s
+        """, (
+            detail["registered_city"],
+            detail["registered_state"],
+            detail["in_australia"],
+            ticker,
+        ))
+
+        cur.execute("""
+            INSERT INTO enrichment_log
+                (listing_id, action, source_type, success, documents_processed, triggered_by)
+            SELECT id, 'company_info_pull', 'asx_announcement', TRUE, 1, %s
+            FROM asx_listings WHERE ticker=%s
+        """, (triggered_by, ticker))
+        conn.commit()
+
+
+def refresh_target_company_details(conn, only_missing_location: bool = True, triggered_by: str = "system") -> int:
+    """Backfill target-sector company detail, especially HQ location fields."""
+    with conn.cursor(cursor_factory=RealDictCursor) as cur:
+        where_clause = """
+            WHERE is_active = TRUE
+              AND is_target_sector = TRUE
+        """
+        if only_missing_location:
+            where_clause += """
+              AND (
+                    registered_city IS NULL
+                 OR registered_state IS NULL
+                 OR location_source IS NULL
+              )
+            """
+        cur.execute(f"""
+            SELECT ticker
+            FROM asx_listings
+            {where_clause}
+            ORDER BY ticker
+        """)
+        rows = cur.fetchall()
+
+    tickers = [r["ticker"] for r in rows]
+    if not tickers:
+        logger.info("No target-sector companies needed detail backfill")
+        return 0
+
+    updated = 0
+    logger.info(f"Backfilling company detail for {len(tickers)} target-sector companies")
+    with httpx.Client(headers=HTTP_HEADERS, timeout=HTTP_TIMEOUT) as client:
+        for i, ticker in enumerate(tickers):
+            detail = fetch_company_detail(client, ticker)
+            if detail:
+                update_company_detail(conn, ticker, detail, triggered_by)
+                updated += 1
+            if i < len(tickers) - 1:
+                time.sleep(DETAIL_REQUEST_DELAY)
+
+    logger.info(f"Company detail backfill complete: {updated}/{len(tickers)} updated")
+    return updated
+
+
 def record_refresh(conn, run_type: str, stats: RefreshStats, triggered_by: str) -> str:
     with conn.cursor() as cur:
         cur.execute("""
@@ -333,6 +641,7 @@ def run_full_refresh(triggered_by: str = "system"):
     try:
         stats = upsert_listings(conn, listings)
         backfill_prospect_matrix(conn)
+        refresh_target_company_details(conn, only_missing_location=True, triggered_by=triggered_by)
         rid = record_refresh(conn, "weekly", stats, triggered_by)
 
         logger.info("=" * 60)
@@ -368,24 +677,7 @@ def run_single_refresh(ticker: str, triggered_by: str = "manual"):
             logger.warning(f"No detail for {ticker}")
             return None
 
-        with conn.cursor() as cur:
-            cur.execute("""
-                UPDATE asx_listings SET
-                    listing_date=%s, website=%s, principal_activities=%s,
-                    market_cap_aud=%s, last_price_aud=%s, last_refreshed_at=NOW()
-                WHERE ticker=%s
-            """, (
-                detail["listing_date"], detail["website"],
-                detail["principal_activities"],
-                detail["market_cap_aud"], detail["last_price_aud"], ticker,
-            ))
-            cur.execute("""
-                INSERT INTO enrichment_log
-                    (listing_id, action, source_type, success, documents_processed, triggered_by)
-                SELECT id, 'company_info_pull', 'asx_announcement', TRUE, 1, %s
-                FROM asx_listings WHERE ticker=%s
-            """, (triggered_by, ticker))
-            conn.commit()
+        update_company_detail(conn, ticker, detail, triggered_by)
         logger.info(f"{ticker} updated")
         return detail
     finally:

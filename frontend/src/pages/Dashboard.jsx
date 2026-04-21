@@ -5,10 +5,22 @@ function StatCard({ label, value, sub, color }) {
   return (
     <div className="card p-4" style={{ borderLeft: `3px solid ${color || '#1e6fd4'}` }}>
       <div className="text-xs font-mono uppercase tracking-widest mb-1" style={{ color: '#4a5a70' }}>{label}</div>
-      <div className="text-3xl font-mono font-semibold" style={{ color: color || '#e2e8f0' }}>{value ?? '—'}</div>
+      <div className="text-3xl font-mono font-semibold" style={{ color: color || '#e2e8f0' }}>{value ?? '-'}</div>
       {sub && <div className="text-xs mt-1" style={{ color: '#8fa3bf' }}>{sub}</div>}
     </div>
   )
+}
+
+function formatAiOutcome(progress) {
+  if (!progress) return ''
+  const basis = progress.ai_selection_basis === 'prospect_score' ? 'score' : 'signal count'
+  if (progress.ai_status === 'skipped_no_api_key') return ' AI skipped: no Anthropic API key configured.'
+  if (progress.ai_status === 'skipped_no_candidates') return ' AI skipped: no scored prospects with signals were available.'
+  if ((progress.ai_total || 0) === 0) return ''
+
+  const summary = ` AI reviewed ${progress.ai_total} top prospects by ${basis}: ${progress.ai_ok || 0} succeeded, ${progress.ai_fail || 0} failed.`
+  if ((progress.ai_fail || 0) > 0 && progress.ai_message) return `${summary} ${progress.ai_message}`
+  return summary
 }
 
 export default function Dashboard() {
@@ -39,7 +51,7 @@ export default function Dashboard() {
       setStats(await statsRes.json())
       setSectors(await sectorsRes.json())
     } catch {
-      setError('Cannot reach the API — is the backend running?')
+      setError('Cannot reach the API - is the backend running?')
     }
     setLoading(false)
   }
@@ -62,9 +74,9 @@ export default function Dashboard() {
           refreshPollRef.current = null
           setRefreshing(false)
           if (d.phase === 'Failed') {
-            setToast({ ok: false, msg: `Refresh failed — ${d.detail}` })
+            setToast({ ok: false, msg: `Refresh failed - ${d.detail}` })
           } else {
-            setToast({ ok: true, msg: `ASX refresh complete — ${d.detail}` })
+            setToast({ ok: true, msg: `ASX refresh complete - ${d.detail}` })
           }
           setTimeout(() => setToast(null), 10000)
           setTimeout(() => setRefreshProgress(null), 10000)
@@ -86,7 +98,11 @@ export default function Dashboard() {
           clearInterval(enrichPollRef.current)
           enrichPollRef.current = null
           setEnriching(false)
-          setToast({ ok: true, msg: `Enrichment complete — ${d.ok} enriched, ${d.skip} skipped, ${d.fail} failed` })
+          const aiOutcome = formatAiOutcome(d)
+          setToast({
+            ok: d.fail === 0 && (d.ai_fail || 0) === 0,
+            msg: `Enrichment complete - ${d.ok} enriched, ${d.skip} skipped, ${d.fail} failed.${aiOutcome}`,
+          })
           setTimeout(() => setToast(null), 10000)
           setTimeout(() => setEnrichProgress(null), 10000)
           loadData(true)
@@ -98,15 +114,12 @@ export default function Dashboard() {
   useEffect(() => {
     loadData()
     loadLastRefresh()
-    // Check if enrichment is already running
     fetch('/api/enrich/status').then(r => r.json()).then(d => {
       if (d.running) { setEnriching(true); setEnrichProgress(d); startEnrichPolling() }
     }).catch(() => {})
-    // Check if refresh is already running
     fetch('/api/refresh/status').then(r => r.json()).then(d => {
       if (d.running) { setRefreshing(true); setRefreshProgress(d); startRefreshPolling() }
     }).catch(() => {})
-    // Auto-refresh stats every 60 seconds
     intervalRef.current = setInterval(() => loadData(true), 60000)
     return () => {
       clearInterval(intervalRef.current)
@@ -124,7 +137,7 @@ export default function Dashboard() {
       setTimeout(() => setToast(null), 5000)
       startRefreshPolling()
     } catch {
-      setToast({ ok: false, msg: 'Refresh failed — check API' })
+      setToast({ ok: false, msg: 'Refresh failed - check API' })
       setRefreshing(false)
       setTimeout(() => setToast(null), 5000)
     }
@@ -139,13 +152,12 @@ export default function Dashboard() {
       setTimeout(() => setToast(null), 5000)
       startEnrichPolling()
     } catch {
-      setToast({ ok: false, msg: 'Batch enrichment failed — check API' })
+      setToast({ ok: false, msg: 'Batch enrichment failed - check API' })
       setEnriching(false)
       setTimeout(() => setToast(null), 5000)
     }
   }
 
-  // Error state
   if (error && !stats) {
     return (
       <div className="p-6">
@@ -161,7 +173,6 @@ export default function Dashboard() {
     )
   }
 
-  // Loading state
   if (loading && !stats) {
     return (
       <div className="p-6">
@@ -172,7 +183,6 @@ export default function Dashboard() {
 
   return (
     <div className="p-6">
-      {/* Header */}
       <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
         <div>
           <div className="font-mono text-xs tracking-widest uppercase mb-1" style={{ color: '#4a5a70' }}>
@@ -200,7 +210,11 @@ export default function Dashboard() {
               cursor: enriching ? 'not-allowed' : 'pointer',
             }}
           >
-            {enriching && enrichProgress ? `ENRICHING ${enrichProgress.current}/${enrichProgress.total}` : enriching ? 'ENRICHING...' : 'ENRICH ALL'}
+            {enriching && enrichProgress?.ai_running
+              ? `AI ${enrichProgress.ai_current}/${enrichProgress.ai_total}`
+              : enriching && enrichProgress
+                ? `ENRICHING ${enrichProgress.current}/${enrichProgress.total}`
+                : enriching ? 'ENRICHING...' : 'ENRICH ALL'}
           </button>
           <button
             onClick={handleRefresh}
@@ -213,41 +227,58 @@ export default function Dashboard() {
               cursor: refreshing ? 'not-allowed' : 'pointer',
             }}
           >
-            {refreshing && refreshProgress ? `REFRESHING...` : refreshing ? 'REFRESHING...' : 'REFRESH ASX DATA'}
+            {refreshing && refreshProgress ? 'REFRESHING...' : refreshing ? 'REFRESHING...' : 'REFRESH ASX DATA'}
           </button>
         </div>
       </div>
 
-      {/* Toast */}
       {toast && (
         <div className="mb-4 px-4 py-2 text-sm font-mono" style={{ background: toast.ok ? '#052e16' : '#1f0808', border: `1px solid ${toast.ok ? '#14532d' : '#7f1d1d'}`, color: toast.ok ? '#22c55e' : '#ef4444' }}>
           {toast.msg}
         </div>
       )}
 
-      {/* Enrichment Progress */}
       {enrichProgress && (
         <div className="mb-4 px-4 py-3 font-mono text-xs" style={{ background: '#111418', border: '1px solid #14532d' }}>
-          <div className="flex items-center justify-between mb-2">
-            <span style={{ color: '#22c55e' }}>
-              Enriching {enrichProgress.current} of {enrichProgress.total} — {enrichProgress.ticker}
-            </span>
-            <span style={{ color: '#4a5a70' }}>
-              {enrichProgress.ok} done · {enrichProgress.skip} skipped · {enrichProgress.fail} failed
-            </span>
-          </div>
+          {!enrichProgress.ai_running ? (
+            <div className="flex items-center justify-between mb-2">
+              <span style={{ color: '#22c55e' }}>
+                Enriching {enrichProgress.current} of {enrichProgress.total} - {enrichProgress.ticker}
+              </span>
+              <span style={{ color: '#4a5a70' }}>
+                {enrichProgress.ok} done · {enrichProgress.skip} skipped · {enrichProgress.fail} failed
+              </span>
+            </div>
+          ) : (
+            <div className="flex items-center justify-between mb-2">
+              <span style={{ color: '#D4AF37' }}>
+                AI deep analysis {enrichProgress.ai_current} of {enrichProgress.ai_total} - {enrichProgress.ai_ticker}
+              </span>
+              <span style={{ color: '#8B7120' }}>
+                {enrichProgress.ai_ok || 0} succeeded · {enrichProgress.ai_fail || 0} failed
+              </span>
+            </div>
+          )}
+          {enrichProgress.ai_message && (
+            <div className="mb-2" style={{ color: enrichProgress.ai_fail > 0 ? '#ef4444' : '#8fa3bf' }}>
+              {enrichProgress.ai_message}
+            </div>
+          )}
           <div style={{ width: '100%', height: 4, background: '#1e2530' }}>
             <div style={{
-              width: `${enrichProgress.total > 0 ? (enrichProgress.current / enrichProgress.total * 100) : 0}%`,
+              width: `${
+                enrichProgress.ai_running
+                  ? (enrichProgress.ai_total > 0 ? (enrichProgress.ai_current / enrichProgress.ai_total * 100) : 0)
+                  : (enrichProgress.total > 0 ? (enrichProgress.current / enrichProgress.total * 100) : 0)
+              }%`,
               height: '100%',
-              background: '#22c55e',
+              background: enrichProgress.ai_running ? '#D4AF37' : '#22c55e',
               transition: 'width 0.3s',
             }} />
           </div>
         </div>
       )}
 
-      {/* Refresh Progress */}
       {refreshProgress && (
         <div className="mb-4 px-4 py-3 font-mono text-xs" style={{ background: '#111418', border: '1px solid #1e3a5f' }}>
           <div className="flex items-center gap-3">
@@ -259,20 +290,18 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Connection warning (shown when background poll fails but we have stale data) */}
       {error && stats && (
         <div className="mb-4 px-4 py-2 text-xs font-mono" style={{ background: '#1f0808', border: '1px solid #7f1d1d', color: '#ef4444' }}>
-          API unreachable — showing last loaded data.{' '}
+          API unreachable - showing last loaded data.{' '}
           <button onClick={() => loadData()} style={{ textDecoration: 'underline', background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer' }}>Retry</button>
         </div>
       )}
 
-      {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
         <StatCard label="Total Prospects" value={stats?.total_prospects?.toLocaleString()} color="#3b82f6" />
         <StatCard label="Enriched" value={stats?.enriched} sub={`${stats?.ready_for_outreach || 0} ready for outreach`} color="#14b8a6" />
         <StatCard label="Signals Detected" value={stats?.total_signals?.toLocaleString()} sub={`${stats?.strong_signals || 0} strong`} color="#f97316" />
-        <StatCard label="Avg Score" value={stats?.avg_score ? Number(stats.avg_score).toFixed(1) : '—'} color="#22c55e" />
+        <StatCard label="Avg Score" value={stats?.avg_score ? Number(stats.avg_score).toFixed(1) : '-'} color="#22c55e" />
       </div>
       <div className="mb-6">
         <div
@@ -282,13 +311,12 @@ export default function Dashboard() {
         >
           <div className="text-xs font-mono uppercase tracking-widest mb-1" style={{ color: '#8B7120' }}>Watchlist</div>
           <div className="text-3xl font-mono font-semibold" style={{ color: '#D4AF37' }}>
-            {stats?.watchlist_count ?? '—'}
+            {stats?.watchlist_count ?? '-'}
           </div>
           <div className="text-xs mt-1" style={{ color: '#4a5a70' }}>starred companies</div>
         </div>
       </div>
 
-      {/* Last Refresh Result */}
       {lastRefresh && (
         <div className="mb-6 card px-4 py-3" style={{
           borderLeft: `3px solid ${lastRefresh.status === 'failed' ? '#ef4444' : '#3b82f6'}`,
@@ -298,13 +326,13 @@ export default function Dashboard() {
           </div>
           {lastRefresh.status === 'failed' ? (
             <div className="text-sm" style={{ color: '#ef4444' }}>
-              Failed — {lastRefresh.error_message || 'Unknown error'}
+              Failed - {lastRefresh.error_message || 'Unknown error'}
             </div>
           ) : (
             <div className="text-sm" style={{ color: '#8fa3bf' }}>
               {lastRefresh.total_listings?.toLocaleString() || '?'} listings found, {lastRefresh.target_sector_count?.toLocaleString() || '?'} target sector
-              {lastRefresh.new_listings > 0 && <span style={{ color: '#22c55e' }}> — {lastRefresh.new_listings} new added</span>}
-              {lastRefresh.delisted_count > 0 && <span style={{ color: '#eab308' }}> — {lastRefresh.delisted_count} removed</span>}
+              {lastRefresh.new_listings > 0 && <span style={{ color: '#22c55e' }}> - {lastRefresh.new_listings} new added</span>}
+              {lastRefresh.delisted_count > 0 && <span style={{ color: '#eab308' }}> - {lastRefresh.delisted_count} removed</span>}
             </div>
           )}
         </div>
@@ -317,7 +345,6 @@ export default function Dashboard() {
         <StatCard label="Disqualified" value={stats?.disqualified || 0} color="#4a5a70" />
       </div>
 
-      {/* Sector Table */}
       <div className="card mb-6">
         <div className="px-4 py-3 flex items-center justify-between" style={{ borderBottom: '1px solid #1e2530' }}>
           <span className="font-mono text-xs uppercase tracking-widest" style={{ color: '#4a5a70' }}>
@@ -328,7 +355,7 @@ export default function Dashboard() {
             className="font-mono text-xs"
             style={{ color: '#1e6fd4', background: 'none', border: 'none', cursor: 'pointer' }}
           >
-            View Leads →
+            {'View Leads ->'}
           </button>
         </div>
         <div style={{ overflowX: 'auto' }}>
@@ -350,7 +377,7 @@ export default function Dashboard() {
                   <td className="px-4 py-2.5 font-mono text-xs" style={{ color: '#8fa3bf' }}>{s.in_matrix}</td>
                   <td className="px-4 py-2.5 font-mono text-xs" style={{ color: '#14b8a6' }}>{s.enriched}</td>
                   <td className="px-4 py-2.5 font-mono text-xs" style={{ color: s.avg_score ? '#22c55e' : '#4a5a70' }}>
-                    {s.avg_score ? Number(s.avg_score).toFixed(1) : '—'}
+                    {s.avg_score ? Number(s.avg_score).toFixed(1) : '-'}
                   </td>
                 </tr>
               ))}

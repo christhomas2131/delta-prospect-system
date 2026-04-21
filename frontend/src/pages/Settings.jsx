@@ -4,20 +4,19 @@ const GOLD = '#D4AF37'
 const GOLD_DIM = '#8B7120'
 
 function StatusDot({ configured, valid }) {
-  if (!configured) return (
-    <span className="font-mono text-xs" style={{ color: '#4a5a70' }}>● Not configured</span>
-  )
-  if (valid) return (
-    <span className="font-mono text-xs" style={{ color: '#22c55e' }}>● Valid</span>
-  )
-  return (
-    <span className="font-mono text-xs" style={{ color: '#ef4444' }}>● Invalid</span>
-  )
+  if (!configured) {
+    return <span className="font-mono text-xs" style={{ color: '#4a5a70' }}>● Not configured</span>
+  }
+  if (valid) {
+    return <span className="font-mono text-xs" style={{ color: '#22c55e' }}>● Valid</span>
+  }
+  return <span className="font-mono text-xs" style={{ color: '#ef4444' }}>● Invalid</span>
 }
 
 export default function Settings() {
   const [apiKey, setApiKey] = useState('')
-  const [status, setStatus] = useState({ configured: false, valid: false })
+  const [status, setStatus] = useState({ configured: false, valid: false, source: null })
+  const [firecrawlStatus, setFirecrawlStatus] = useState({ configured: false, valid: false, source: null })
   const [saving, setSaving] = useState(false)
   const [toast, setToast] = useState(null)
 
@@ -25,6 +24,11 @@ export default function Settings() {
     fetch('/api/settings/api-key/status')
       .then(r => r.json())
       .then(setStatus)
+      .catch(() => {})
+
+    fetch('/api/settings/firecrawl/status')
+      .then(r => r.json())
+      .then(setFirecrawlStatus)
       .catch(() => {})
   }, [])
 
@@ -43,18 +47,21 @@ export default function Settings() {
         body: JSON.stringify({ api_key: apiKey.trim() }),
       })
       const d = await r.json()
-      setStatus({ configured: d.configured, valid: d.valid })
+      setStatus({
+        configured: d.configured,
+        valid: d.valid,
+        source: d.valid ? 'manual' : null,
+      })
       showToast(d.valid, d.message)
       if (d.valid) setApiKey('')
     } catch {
-      showToast(false, 'Request failed — is the API running?')
+      showToast(false, 'Request failed - is the API running?')
     }
     setSaving(false)
   }
 
   return (
     <div className="p-6 max-w-2xl">
-      {/* Header */}
       <div className="mb-6">
         <div className="font-mono text-xs tracking-widest uppercase mb-1" style={{ color: '#4a5a70' }}>
           Configuration
@@ -64,7 +71,6 @@ export default function Settings() {
         </h1>
       </div>
 
-      {/* Toast */}
       {toast && (
         <div className="mb-4 px-4 py-2 text-sm font-mono"
           style={{
@@ -76,9 +82,7 @@ export default function Settings() {
         </div>
       )}
 
-      {/* API Key Card */}
       <div className="card p-5 mb-4">
-        {/* Card header */}
         <div className="flex items-center justify-between mb-4">
           <div>
             <div className="flex items-center gap-2 mb-1">
@@ -93,18 +97,16 @@ export default function Settings() {
           <StatusDot {...status} />
         </div>
 
-        {/* Input */}
         <input
           type="password"
           value={apiKey}
           onChange={e => setApiKey(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && handleSave()}
-          placeholder={status.valid && status.source === 'env' ? 'sk-ant-...configured via environment' : status.valid ? 'sk-ant-...key saved (manual)' : 'sk-ant-api03-...'}
+          placeholder={status.valid && status.source === 'env' ? 'sk-ant-...configured via environment' : status.valid ? 'sk-ant-...key saved for this session' : 'sk-ant-api03-...'}
           className="w-full px-3 py-2 text-sm font-mono mb-3"
           style={{ background: '#0d1017', border: '1px solid #1e2530', color: '#e2e8f0' }}
         />
 
-        {/* Actions */}
         <div className="flex gap-2">
           <button
             onClick={handleSave}
@@ -122,16 +124,18 @@ export default function Settings() {
           </button>
         </div>
 
-        {/* Info note */}
         <div className="mt-4 pt-4 text-xs" style={{ borderTop: '1px solid #1e2530', color: '#4a5a70', lineHeight: 1.6 }}>
-          <strong style={{ color: '#8fa3bf' }}>Optional.</strong> Enables Deep Analysis — Claude AI validates rule-based signals,
+          <strong style={{ color: '#8fa3bf' }}>Optional.</strong> Enables Deep Analysis - Claude AI validates rule-based signals,
           detects missed pressures, and generates refined strategic profiles.
-          Costs approximately <strong style={{ color: '#8fa3bf' }}>$0.01–0.03 per company</strong> analysis.
-          The key is stored in server memory only and is never saved to the database.
+          Costs approximately <strong style={{ color: '#8fa3bf' }}>$0.01-$0.03 per company</strong> analysis.
+        </div>
+
+        <div className="mt-3 text-xs" style={{ color: '#8fa3bf', lineHeight: 1.6 }}>
+          Manual keys are stored in server memory for the current process only. For Railway auto-analysis after deploys/restarts,
+          set <span className="font-mono">ANTHROPIC_API_KEY</span> in the environment.
         </div>
       </div>
 
-      {/* Status card */}
       <div className="card p-4">
         <div className="font-mono text-xs uppercase tracking-widest mb-3" style={{ color: '#4a5a70' }}>
           Feature Status
@@ -147,7 +151,23 @@ export default function Settings() {
             {status.valid && status.source === 'env' && (
               <span className="font-mono text-xs" style={{ color: '#4a5a70' }}>(env var)</span>
             )}
+            {status.valid && status.source === 'manual' && (
+              <span className="font-mono text-xs" style={{ color: '#8B7120' }}>(session only)</span>
+            )}
           </span>
+        </div>
+        <div className="flex items-center justify-between py-2" style={{ borderTop: '1px solid #1e2530' }}>
+          <span className="text-sm" style={{ color: '#8fa3bf' }}>V3 Document Intelligence</span>
+          <span className="flex items-center gap-2">
+            <StatusDot {...firecrawlStatus} />
+            {firecrawlStatus.valid && firecrawlStatus.source === 'env' && (
+              <span className="font-mono text-xs" style={{ color: '#4a5a70' }}>(FIRECRAWL_API_KEY)</span>
+            )}
+          </span>
+        </div>
+        <div className="mt-3 text-xs" style={{ color: '#8fa3bf', lineHeight: 1.6 }}>
+          Firecrawl powers the new full-document layer for V3. Set <span className="font-mono">FIRECRAWL_API_KEY</span> in the
+          environment to let Deep Analysis read full filings and reports instead of just headlines.
         </div>
       </div>
     </div>

@@ -176,6 +176,9 @@ def run_deep_analysis(
 
     result["tokens_used"] = tokens_used
     result["announcements"] = announcements
+    result["analysis_mode"] = "announcement_headlines"
+    result["analysis_version"] = "claude-deep-v1"
+    result["model_name"] = "claude-sonnet-4-6"
     logger.info(
         "%s: deep analysis complete — %d validated, %d new signals, %d tokens",
         ticker,
