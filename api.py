@@ -22,8 +22,10 @@ import os
 import sys
 import logging
 import time
+import threading
+import uuid
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Callable, Optional
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -56,13 +58,31 @@ _enrich_progress: dict = {
     "running": False, "current": 0, "total": 0, "ticker": "", "ok": 0, "skip": 0, "fail": 0,
     # AI deep analysis phase (runs after main enrichment loop when API key is set)
     "ai_running": False, "ai_current": 0, "ai_total": 0, "ai_ticker": "",
+    "ai_ok": 0, "ai_fail": 0, "ai_skip": 0,
+    "ai_status": "idle", "ai_message": "", "ai_selection_basis": "prospect_score",
 }
+
+
+def _reset_ai_progress():
+    """Reset the AI deep analysis phase state before each batch run."""
+    _enrich_progress["ai_running"] = False
+    _enrich_progress["ai_current"] = 0
+    _enrich_progress["ai_total"] = 0
+    _enrich_progress["ai_ticker"] = ""
+    _enrich_progress["ai_ok"] = 0
+    _enrich_progress["ai_fail"] = 0
+    _enrich_progress["ai_skip"] = 0
+    _enrich_progress["ai_status"] = "idle"
+    _enrich_progress["ai_message"] = ""
+    _enrich_progress["ai_selection_basis"] = "prospect_score"
 
 # ---------------------------------------------------------------------------
 # In-memory refresh progress tracker
 # ---------------------------------------------------------------------------
 
 _refresh_progress: dict = {"running": False, "phase": "", "detail": ""}
+_deep_analysis_jobs: dict = {}
+_deep_analysis_lock = threading.Lock()
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -272,6 +292,11 @@ class RefreshRequest(BaseModel):
 
 class ApiKeyRequest(BaseModel):
     api_key: str
+
+
+class V3CollectRequest(BaseModel):
+    max_documents: int = Field(default=6, ge=1, le=20)
+    force_refresh: bool = False
 
 # ---------------------------------------------------------------------------
 # Endpoints: Prospects
@@ -658,11 +683,38 @@ def get_prospect(prospect_id: str):
             # Last deep analysis timestamp (derived from enrichment_log)
             cur.execute("""
                 SELECT completed_at FROM enrichment_log
-                WHERE listing_id = %s AND agent_version = 'claude-deep-v1'
+                WHERE listing_id = %s
+                  AND agent_version IN ('claude-deep-v1', 'claude-deep-v2-firecrawl')
                 ORDER BY completed_at DESC LIMIT 1
             """, (prospect["listing_id"],))
             da_row = cur.fetchone()
             last_deep_analysis_at = da_row["completed_at"] if da_row else None
+
+            cur.execute("""
+                SELECT id, source_url, source_title, source_date, document_type,
+                       provider, fetch_status, fetched_at, last_error
+                FROM announcement_documents
+                WHERE listing_id = %s
+                ORDER BY source_date DESC NULLS LAST, fetched_at DESC NULLS LAST
+                LIMIT 10
+            """, (prospect["listing_id"],))
+            v3_documents = cur.fetchall()
+
+            cur.execute("""
+                SELECT analysis_type, provider, model_name, source_count, summary,
+                       output_json, completed_at
+                FROM prospect_intelligence_runs
+                WHERE prospect_id = %s
+                ORDER BY completed_at DESC NULLS LAST, created_at DESC
+                LIMIT 1
+            """, (prospect_id,))
+            latest_v3_analysis = cur.fetchone()
+
+            try:
+                from v3_intelligence import firecrawl_is_configured
+                firecrawl_available = firecrawl_is_configured()
+            except Exception:
+                firecrawl_available = False
 
             return {
                 "prospect": prospect,
@@ -670,6 +722,9 @@ def get_prospect(prospect_id: str):
                 "enrichment_history": enrichment_history,
                 "deep_analysis_available": _api_key_store["valid"],
                 "last_deep_analysis_at": last_deep_analysis_at,
+                "firecrawl_available": firecrawl_available,
+                "v3_documents": v3_documents,
+                "v3_latest_analysis": latest_v3_analysis,
             }
     finally:
         put_conn(conn)
@@ -756,9 +811,11 @@ def toggle_watchlist(prospect_id: str):
 # Endpoints: Deep Analysis (Claude-powered premium feature)
 # ---------------------------------------------------------------------------
 
-@app.post("/api/prospects/{prospect_id}/deep-analysis")
-def deep_analysis(prospect_id: str):
-    """Run Claude deep analysis for a single prospect. Synchronous (~5-10s)."""
+def _execute_deep_analysis(
+    prospect_id: str,
+    progress_callback: Optional[Callable[..., None]] = None,
+):
+    """Run deep analysis for one prospect and return the API response payload."""
     if not _api_key_store["valid"]:
         raise HTTPException(
             status_code=402,
@@ -768,6 +825,8 @@ def deep_analysis(prospect_id: str):
     conn = get_conn()
     try:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            if progress_callback:
+                progress_callback(8, "loading_context", "Loading company context")
             cur.execute("""
                 SELECT pm.id, pm.listing_id, pm.size_of_prize, pm.prize_breakdown,
                        l.ticker, l.company_name, l.gics_sector
@@ -779,6 +838,8 @@ def deep_analysis(prospect_id: str):
             if not prospect:
                 raise HTTPException(status_code=404, detail="Prospect not found")
 
+            if progress_callback:
+                progress_callback(14, "loading_signals", "Loading existing pressure signals")
             cur.execute("""
                 SELECT id, pressure_type, strength, summary, source_url, source_title, model_version
                 FROM pressure_signals WHERE prospect_id = %s
@@ -793,9 +854,10 @@ def deep_analysis(prospect_id: str):
             pb = _json.loads(pb)
         _deal_fit = pb.get("deal_fit", "") if isinstance(pb, dict) else ""
 
-        from deep_analysis import run_deep_analysis as _run_deep
-        result = _run_deep(
+        result = _run_best_available_analysis(
+            conn=conn,
             prospect_id=prospect_id,
+            listing_id=str(prospect["listing_id"]),
             ticker=prospect["ticker"],
             company_name=prospect["company_name"],
             sector=prospect["gics_sector"],
@@ -803,11 +865,14 @@ def deep_analysis(prospect_id: str):
             api_key=_api_key_store["key"],
             size_of_prize=int(prospect.get("size_of_prize") or 0),
             deal_fit=_deal_fit,
+            progress_callback=progress_callback,
         )
 
         if "error" in result:
             raise HTTPException(status_code=500, detail=result["error"])
 
+        if progress_callback:
+            progress_callback(90, "saving_results", "Saving analysis results")
         inserted = _store_deep_analysis_result(
             conn,
             prospect_id=prospect_id,
@@ -817,11 +882,25 @@ def deep_analysis(prospect_id: str):
             result=result,
         )
 
+        if result.get("analysis_mode") == "full_documents":
+            try:
+                from v3_intelligence import store_intelligence_run
+                store_intelligence_run(
+                    conn,
+                    prospect_id=prospect_id,
+                    listing_id=str(prospect["listing_id"]),
+                    result=result,
+                )
+            except Exception as exc:
+                logger.warning("Failed to store V3 intelligence run for %s: %s", prospect["ticker"], exc)
+
         tokens_used = result.get("tokens_used", 0)
         validated = result.get("validated_signals", [])
         profile = result.get("refined_profile", {})
 
         # Read back updated score for the response
+        if progress_callback:
+            progress_callback(96, "refreshing_score", "Refreshing prospect score")
         with conn.cursor() as cur:
             cur.execute("SELECT prospect_score FROM prospect_matrix WHERE id = %s", (prospect_id,))
             row = cur.fetchone()
@@ -838,12 +917,181 @@ def deep_analysis(prospect_id: str):
             "new_score": new_score,
             "profile": profile,
             "validated_signals": validated,
+            "analysis_mode": result.get("analysis_mode"),
+            "documents_used": result.get("documents_used", 0),
+            "gap_findings": result.get("gap_findings", []),
+            "executive_summary": result.get("executive_summary"),
         }
     except HTTPException:
         raise
     except Exception as e:
         logger.exception("Deep analysis failed for %s", prospect_id)
         raise HTTPException(status_code=500, detail=f"Deep analysis error: {e}")
+    finally:
+        put_conn(conn)
+
+
+def _run_deep_analysis_job(prospect_id: str, job_id: str):
+    progress_callback = _progress_updater(prospect_id, job_id)
+    try:
+        result = _execute_deep_analysis(prospect_id, progress_callback=progress_callback)
+        _update_deep_analysis_job(
+            prospect_id,
+            job_id=job_id,
+            status="completed",
+            progress_pct=100,
+            stage="completed",
+            message="Deep analysis complete",
+            result=result,
+            completed_at=_now_iso(),
+            error=None,
+        )
+    except HTTPException as exc:
+        _update_deep_analysis_job(
+            prospect_id,
+            job_id=job_id,
+            status="failed",
+            progress_pct=100,
+            stage="failed",
+            message=str(exc.detail),
+            error=str(exc.detail),
+            completed_at=_now_iso(),
+        )
+    except Exception as exc:
+        logger.exception("Background deep analysis failed for %s", prospect_id)
+        _update_deep_analysis_job(
+            prospect_id,
+            job_id=job_id,
+            status="failed",
+            progress_pct=100,
+            stage="failed",
+            message=f"Deep analysis error: {exc}",
+            error=f"Deep analysis error: {exc}",
+            completed_at=_now_iso(),
+        )
+
+
+@app.post("/api/prospects/{prospect_id}/deep-analysis")
+def deep_analysis(prospect_id: str):
+    """Run Claude deep analysis for a single prospect. Synchronous (~5-10s)."""
+    return _execute_deep_analysis(prospect_id)
+
+
+@app.post("/api/prospects/{prospect_id}/deep-analysis/start")
+def start_deep_analysis(prospect_id: str):
+    """Start deep analysis in the background for one prospect."""
+    current = _get_deep_analysis_job(prospect_id)
+    if current and current.get("status") == "running":
+        return current
+
+    if not _api_key_store["valid"]:
+        raise HTTPException(
+            status_code=402,
+            detail="No valid API key configured. Go to Settings to add your Anthropic API key.",
+        )
+
+    job_id = str(uuid.uuid4())
+    started = _update_deep_analysis_job(
+        prospect_id,
+        job_id=job_id,
+        status="running",
+        progress_pct=2,
+        stage="queued",
+        message="Queued deep analysis",
+        started_at=_now_iso(),
+        completed_at=None,
+        error=None,
+        result=None,
+    )
+    thread = threading.Thread(
+        target=_run_deep_analysis_job,
+        args=(prospect_id, job_id),
+        daemon=True,
+    )
+    thread.start()
+    return started
+
+
+@app.get("/api/prospects/{prospect_id}/deep-analysis/status")
+def get_deep_analysis_status(prospect_id: str):
+    """Get the latest deep analysis background job status for one prospect."""
+    current = _get_deep_analysis_job(prospect_id)
+    if not current:
+        return {
+            "prospect_id": prospect_id,
+            "status": "idle",
+            "progress_pct": 0,
+            "stage": "idle",
+            "message": "No deep analysis running",
+            "updated_at": _now_iso(),
+        }
+    return current
+
+
+@app.get("/api/prospects/{prospect_id}/documents")
+def get_prospect_documents(prospect_id: str):
+    """List stored full-document records for a prospect."""
+    conn = get_conn()
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("""
+                SELECT listing_id
+                FROM prospect_matrix
+                WHERE id = %s
+            """, (prospect_id,))
+            row = cur.fetchone()
+            if not row:
+                raise HTTPException(status_code=404, detail="Prospect not found")
+
+            cur.execute("""
+                SELECT id, source_url, source_title, source_date, document_type,
+                       provider, fetch_status, fetched_at, last_error
+                FROM announcement_documents
+                WHERE listing_id = %s
+                ORDER BY source_date DESC NULLS LAST, fetched_at DESC NULLS LAST
+            """, (row["listing_id"],))
+            return {"documents": cur.fetchall()}
+    finally:
+        put_conn(conn)
+
+
+@app.post("/api/prospects/{prospect_id}/documents/collect")
+def collect_prospect_documents(prospect_id: str, req: V3CollectRequest):
+    """Collect and store full announcement/report content for one prospect."""
+    conn = get_conn()
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("""
+                SELECT pm.id AS prospect_id, pm.listing_id,
+                       l.ticker, l.company_name
+                FROM prospect_matrix pm
+                JOIN asx_listings l ON l.id = pm.listing_id
+                WHERE pm.id = %s
+            """, (prospect_id,))
+            prospect = cur.fetchone()
+            if not prospect:
+                raise HTTPException(status_code=404, detail="Prospect not found")
+
+            cur.execute("""
+                SELECT id, pressure_type, strength, summary, source_url, source_title, source_date
+                FROM pressure_signals
+                WHERE prospect_id = %s
+                ORDER BY detected_at DESC
+            """, (prospect_id,))
+            existing_signals = list(cur.fetchall())
+
+        from v3_intelligence import collect_full_documents
+        result = collect_full_documents(
+            conn=conn,
+            listing_id=str(prospect["listing_id"]),
+            ticker=prospect["ticker"],
+            existing_signals=existing_signals,
+            max_documents=req.max_documents,
+            force_refresh=req.force_refresh,
+        )
+        if result.get("error"):
+            raise HTTPException(status_code=400, detail=result["error"])
+        return result
     finally:
         put_conn(conn)
 
@@ -890,6 +1138,16 @@ def get_api_key_status():
         "valid": _api_key_store["valid"],
         "source": _api_key_store.get("source"),  # "env" or "manual" or None
     }
+
+
+@app.get("/api/settings/firecrawl/status")
+def get_firecrawl_api_status():
+    """Return whether Firecrawl document collection is configured."""
+    try:
+        from v3_intelligence import get_firecrawl_status
+        return get_firecrawl_status()
+    except Exception:
+        return {"configured": False, "valid": False, "source": None}
 
 
 # ---------------------------------------------------------------------------
@@ -967,7 +1225,13 @@ def _run_refresh_with_progress(triggered_by: str):
     run_id = None
 
     try:
-        from asx_scraper import fetch_asx_csv, parse_asx_csv, upsert_listings, backfill_prospect_matrix
+        from asx_scraper import (
+            fetch_asx_csv,
+            parse_asx_csv,
+            upsert_listings,
+            backfill_prospect_matrix,
+            refresh_target_company_details,
+        )
         import httpx
 
         # Log a "running" row
@@ -1005,6 +1269,9 @@ def _run_refresh_with_progress(triggered_by: str):
 
             _refresh_progress["phase"] = "Backfilling prospect matrix..."
             backfill_prospect_matrix(sconn)
+            _refresh_progress["phase"] = "Fetching company locations..."
+            _refresh_progress["detail"] = "Pulling registered office address data from ASX company profiles"
+            refresh_target_company_details(sconn, only_missing_location=True, triggered_by=triggered_by)
             sconn.commit()
         finally:
             sconn.close()
@@ -1090,6 +1357,169 @@ def get_latest_refresh():
         put_conn(conn)
 
 
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _get_deep_analysis_job(prospect_id: str) -> Optional[dict]:
+    with _deep_analysis_lock:
+        job = _deep_analysis_jobs.get(prospect_id)
+        return dict(job) if job else None
+
+
+def _update_deep_analysis_job(prospect_id: str, **updates) -> dict:
+    with _deep_analysis_lock:
+        current = dict(_deep_analysis_jobs.get(prospect_id) or {})
+        current.update(updates)
+        current["prospect_id"] = prospect_id
+        current["updated_at"] = _now_iso()
+        _deep_analysis_jobs[prospect_id] = current
+        return dict(current)
+
+
+def _progress_updater(prospect_id: str, job_id: str) -> Callable[..., None]:
+    def _update(progress_pct: int, stage: str, message: str, **extra):
+        current = _get_deep_analysis_job(prospect_id)
+        if not current or current.get("job_id") != job_id:
+            return
+        payload = {
+            "status": "running",
+            "progress_pct": max(0, min(int(progress_pct), 99)),
+            "stage": stage,
+            "message": message,
+        }
+        payload.update(extra)
+        _update_deep_analysis_job(prospect_id, **payload)
+
+    return _update
+
+
+def _run_best_available_analysis(
+    conn,
+    prospect_id: str,
+    listing_id: str,
+    ticker: str,
+    company_name: str,
+    sector: str,
+    existing_signals: list,
+    api_key: str,
+    size_of_prize: int = 0,
+    deal_fit: str = "",
+    progress_callback: Optional[Callable[..., None]] = None,
+):
+    """
+    Prefer the V3 full-document path when Firecrawl is configured and documents
+    can be collected. Fall back to the legacy headline-only analysis otherwise.
+    """
+    from deep_analysis import run_deep_analysis as _run_headline_deep
+
+    try:
+        from v3_intelligence import (
+            collect_full_documents,
+            firecrawl_is_configured,
+            run_full_document_analysis,
+            UI_DOCUMENT_PACK_CAP,
+        )
+
+        if firecrawl_is_configured():
+            collection = collect_full_documents(
+                conn=conn,
+                listing_id=listing_id,
+                ticker=ticker,
+                existing_signals=existing_signals,
+                max_documents=UI_DOCUMENT_PACK_CAP,
+                force_refresh=False,
+                allow_smart_expansion=False,
+                progress_callback=progress_callback,
+            )
+            documents = collection.get("documents", [])
+            if documents:
+                attempted_doc_counts = []
+                doc_attempts = [documents]
+                for retry_limit in (4, 3, 2):
+                    if len(documents) > retry_limit:
+                        doc_attempts.append(documents[:retry_limit])
+
+                result = None
+                for attempt_index, attempt_docs in enumerate(doc_attempts, start=1):
+                    attempted_doc_counts.append(len(attempt_docs))
+                    if progress_callback:
+                        retry_msg = (
+                            f"Retrying with a smaller evidence pack ({len(attempt_docs)} documents)"
+                            if attempt_index > 1 else
+                            f"Analysing the top {len(attempt_docs)} documents"
+                        )
+                        progress_callback(
+                            progress_pct=62,
+                            stage="analysing_documents",
+                            message=retry_msg,
+                            attempted_doc_counts=attempted_doc_counts,
+                        )
+                    result = run_full_document_analysis(
+                        prospect_id=prospect_id,
+                        ticker=ticker,
+                        company_name=company_name,
+                        sector=sector,
+                        existing_signals=existing_signals,
+                        documents=attempt_docs,
+                        api_key=api_key,
+                        size_of_prize=size_of_prize,
+                        deal_fit=deal_fit,
+                        progress_callback=progress_callback,
+                    )
+                    if "error" not in result:
+                        result["document_collection"] = {
+                            "requested": collection.get("requested", 0),
+                            "fetched": collection.get("fetched", 0),
+                            "reused": collection.get("reused", 0),
+                            "failed": collection.get("failed", 0),
+                            "effective_max_documents": collection.get("effective_max_documents", 0),
+                            "attempted_doc_counts": attempted_doc_counts,
+                            "final_documents_used": len(attempt_docs),
+                        }
+                        if attempt_index > 1:
+                            logger.warning(
+                                "%s: V3 analysis recovered after retry with %d documents",
+                                ticker,
+                                len(attempt_docs),
+                            )
+                        return result
+                    if result.get("error_code") != "non_json_response":
+                        break
+                    logger.warning(
+                        "%s: V3 parse failed with %d documents, retrying with a smaller pack",
+                        ticker,
+                        len(attempt_docs),
+                    )
+                if result is not None:
+                    logger.warning("%s: V3 document analysis failed, falling back: %s", ticker, result["error"])
+            else:
+                logger.info("%s: no full documents collected for V3 path, falling back", ticker)
+    except Exception as exc:
+        logger.warning("%s: V3 path unavailable, falling back to headline analysis: %s", ticker, exc)
+
+    if progress_callback:
+        progress_callback(
+            progress_pct=68,
+            stage="headline_fallback",
+            message="Falling back to announcement-only analysis",
+        )
+    result = _run_headline_deep(
+        prospect_id=prospect_id,
+        ticker=ticker,
+        company_name=company_name,
+        sector=sector,
+        existing_signals=existing_signals,
+        api_key=api_key,
+        size_of_prize=size_of_prize,
+        deal_fit=deal_fit,
+    )
+    result.setdefault("analysis_mode", "announcement_headlines")
+    result.setdefault("analysis_version", "claude-deep-v1")
+    result.setdefault("model_name", "claude-sonnet-4-6")
+    return result
+
+
 def _store_deep_analysis_result(conn, prospect_id: str, listing_id: str,
                                 ticker: str, existing_signals: list, result: dict) -> int:
     """
@@ -1102,6 +1532,7 @@ def _store_deep_analysis_result(conn, prospect_id: str, listing_id: str,
 
     valid_pt = {"production","license_to_operate","cost","people","quality","future_readiness"}
     valid_st = {"weak","moderate","strong"}
+    agent_version = result.get("analysis_version") or "claude-deep-v1"
     inserted = 0
 
     with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -1114,10 +1545,10 @@ def _store_deep_analysis_result(conn, prospect_id: str, listing_id: str,
                 new_conf = 0.95 if v["confirmed"] else 0.20
                 cur.execute("""
                     UPDATE pressure_signals
-                    SET is_valid = %s, validated_by = 'claude-deep-v1',
+                    SET is_valid = %s, validated_by = %s,
                         validated_at = NOW(), confidence_score = %s
                     WHERE id = %s
-                """, (v["confirmed"], new_conf, sig["id"]))
+                """, (v["confirmed"], agent_version, new_conf, sig["id"]))
 
         # Insert new AI-detected signals
         for ns in result.get("new_signals", []):
@@ -1136,10 +1567,10 @@ def _store_deep_analysis_result(conn, prospect_id: str, listing_id: str,
                          source_type, source_url, source_title,
                          confidence_score, model_version, extracted_quote, is_valid)
                     VALUES (%s,%s,%s,%s,'asx_announcement',%s,%s,
-                            0.75,'claude-deep-v1',%s,TRUE)
+                            0.75,%s,%s,TRUE)
                     ON CONFLICT (prospect_id, pressure_type, source_url) DO NOTHING
                 """, (prospect_id, pt, st, ns.get("summary",""),
-                      source_url, ns.get("source_title",""), ns.get("reasoning","")))
+                      source_url, ns.get("source_title",""), agent_version, ns.get("reasoning","")))
                 inserted += cur.rowcount
             except Exception as exc:
                 logger.error("Failed to insert AI signal for %s: %s", ticker, exc)
@@ -1191,8 +1622,8 @@ def _store_deep_analysis_result(conn, prospect_id: str, listing_id: str,
                  documents_processed, signals_found,
                  triggered_by, completed_at, agent_version, tokens_used)
             VALUES (%s,'deep_analysis','asx_announcement',TRUE,%s,%s,
-                    'auto_batch',NOW(),'claude-deep-v1',%s)
-        """, (listing_id, len(anns), confirmed_count + inserted, tokens_used))
+                    'auto_batch',NOW(),%s,%s)
+        """, (listing_id, len(anns), confirmed_count + inserted, agent_version, tokens_used))
 
         conn.commit()
 
@@ -1202,23 +1633,24 @@ def _store_deep_analysis_result(conn, prospect_id: str, listing_id: str,
 
 def _auto_deep_analysis(conn):
     """
-    Run Deep Analysis on the top 10 prospects by total signal count.
+    Run Deep Analysis on the top 10 prospects by prospect score.
     Called automatically after Enrich All if an Anthropic API key is configured.
     Updates _enrich_progress with ai_* fields so the frontend can show progress.
     """
     import time as _time
 
+    _enrich_progress["ai_selection_basis"] = "prospect_score"
+
     if not _api_key_store.get("valid") or not _api_key_store.get("key"):
-        logger.info("Auto deep analysis skipped — no valid API key configured")
+        _enrich_progress["ai_status"] = "skipped_no_api_key"
+        _enrich_progress["ai_message"] = "AI deep analysis skipped: no valid Anthropic API key configured."
+        logger.info("Auto deep analysis skipped - no valid API key configured")
         return
 
-    from deep_analysis import run_deep_analysis as _run_deep
-
-    # Select top 10 by signal count
     with conn.cursor(cursor_factory=RealDictCursor) as cur:
         cur.execute("""
             SELECT pm.id AS prospect_id, pm.listing_id,
-                   pm.size_of_prize, pm.prize_breakdown,
+                   pm.size_of_prize, pm.prize_breakdown, pm.prospect_score,
                    l.ticker, l.company_name, l.gics_sector,
                    COUNT(ps.id) AS signal_count
             FROM prospect_matrix pm
@@ -1226,20 +1658,25 @@ def _auto_deep_analysis(conn):
             LEFT JOIN pressure_signals ps ON ps.prospect_id = pm.id
             WHERE l.is_active = TRUE AND l.is_target_sector = TRUE
             GROUP BY pm.id, pm.listing_id, pm.size_of_prize, pm.prize_breakdown,
-                     l.ticker, l.company_name, l.gics_sector
-            ORDER BY signal_count DESC NULLS LAST
+                     pm.prospect_score, l.ticker, l.company_name, l.gics_sector
+            HAVING COUNT(ps.id) > 0
+            ORDER BY pm.prospect_score DESC NULLS LAST, signal_count DESC NULLS LAST
             LIMIT 10
         """)
         top_10 = cur.fetchall()
 
     if not top_10:
+        _enrich_progress["ai_status"] = "skipped_no_candidates"
+        _enrich_progress["ai_message"] = "AI deep analysis skipped: no scored prospects with signals were available."
         return
 
     _enrich_progress["ai_running"] = True
     _enrich_progress["ai_total"] = len(top_10)
     _enrich_progress["ai_current"] = 0
     _enrich_progress["ai_ticker"] = ""
-    logger.info("Auto deep analysis starting on %d top prospects", len(top_10))
+    _enrich_progress["ai_status"] = "running"
+    _enrich_progress["ai_message"] = f"Running AI deep analysis on top {len(top_10)} prospects by score."
+    logger.info("Auto deep analysis starting on %d top prospects by score", len(top_10))
 
     for i, p in enumerate(top_10):
         tk = p["ticker"]
@@ -1250,7 +1687,6 @@ def _auto_deep_analysis(conn):
         _enrich_progress["ai_ticker"] = tk
 
         try:
-            # Load existing signals for this prospect
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
                 cur.execute("""
                     SELECT id, pressure_type, strength, summary, source_url,
@@ -1260,15 +1696,16 @@ def _auto_deep_analysis(conn):
                 """, (prospect_id,))
                 existing_signals = list(cur.fetchall())
 
-            # Get deal_fit from prize_breakdown
             pb = p.get("prize_breakdown") or {}
             if isinstance(pb, str):
                 import json as _json2
                 pb = _json2.loads(pb)
             deal_fit = pb.get("deal_fit", "") if isinstance(pb, dict) else ""
 
-            result = _run_deep(
+            result = _run_best_available_analysis(
+                conn=conn,
                 prospect_id=prospect_id,
+                listing_id=listing_id,
                 ticker=tk,
                 company_name=p["company_name"],
                 sector=p["gics_sector"],
@@ -1279,21 +1716,36 @@ def _auto_deep_analysis(conn):
             )
 
             if "error" in result:
+                _enrich_progress["ai_fail"] += 1
+                _enrich_progress["ai_message"] = f"AI analysis failed for {tk}: {result['error']}"
                 logger.warning("Auto deep analysis error for %s: %s", tk, result["error"])
             else:
                 _store_deep_analysis_result(
                     conn, prospect_id, listing_id, tk, existing_signals, result
                 )
-
+                if result.get("analysis_mode") == "full_documents":
+                    try:
+                        from v3_intelligence import store_intelligence_run
+                        store_intelligence_run(conn, prospect_id, listing_id, result)
+                    except Exception as exc:
+                        logger.warning("Failed to store V3 intelligence run for %s: %s", tk, exc)
+                _enrich_progress["ai_ok"] += 1
+                _enrich_progress["ai_message"] = f"AI analysis stored for {tk}"
         except Exception as exc:
+            _enrich_progress["ai_fail"] += 1
+            _enrich_progress["ai_message"] = f"AI analysis failed for {tk}: {exc}"
             logger.error("Auto deep analysis failed for %s: %s", tk, exc)
 
-        # Delay between calls to avoid rate limiting (skip after last)
         if i < len(top_10) - 1:
             _time.sleep(2.0)
 
     _enrich_progress["ai_running"] = False
     _enrich_progress["ai_ticker"] = ""
+    _enrich_progress["ai_status"] = "completed_with_errors" if _enrich_progress["ai_fail"] else "completed"
+    _enrich_progress["ai_message"] = (
+        f"AI deep analysis complete: {_enrich_progress['ai_ok']} succeeded, "
+        f"{_enrich_progress['ai_fail']} failed."
+    )
     logger.info("Auto deep analysis complete")
 
 
@@ -1310,10 +1762,7 @@ def _run_batch_with_progress():
     _enrich_progress["skip"] = 0
     _enrich_progress["fail"] = 0
     _enrich_progress["ticker"] = ""
-    _enrich_progress["ai_running"] = False
-    _enrich_progress["ai_current"] = 0
-    _enrich_progress["ai_total"] = 0
-    _enrich_progress["ai_ticker"] = ""
+    _reset_ai_progress()
 
     conn = enrich_conn()
     try:
@@ -1402,6 +1851,12 @@ def get_enrichment_status():
         "ai_current": _enrich_progress["ai_current"],
         "ai_total":   _enrich_progress["ai_total"],
         "ai_ticker":  _enrich_progress["ai_ticker"],
+        "ai_ok":      _enrich_progress["ai_ok"],
+        "ai_fail":    _enrich_progress["ai_fail"],
+        "ai_skip":    _enrich_progress["ai_skip"],
+        "ai_status":  _enrich_progress["ai_status"],
+        "ai_message": _enrich_progress["ai_message"],
+        "ai_selection_basis": _enrich_progress["ai_selection_basis"],
     }
 
 

@@ -72,6 +72,7 @@ export default function ProspectDetail() {
   const [deepAvailable, setDeepAvailable] = useState(false)
   const [lastDeepAt, setLastDeepAt] = useState(null)
   const [deepResult, setDeepResult] = useState(null)
+  const [deepJob, setDeepJob] = useState(null)
   const [isWatchlisted, setIsWatchlisted] = useState(false)
 
   const [error, setError] = useState(null)
@@ -97,6 +98,60 @@ export default function ProspectDetail() {
   }
 
   useEffect(() => { load() }, [id])
+
+  useEffect(() => {
+    let cancelled = false
+    const loadDeepStatus = async () => {
+      try {
+        const r = await fetch(`/api/prospects/${id}/deep-analysis/status`)
+        if (!r.ok) return
+        const d = await r.json()
+        if (!cancelled) {
+          setDeepJob(d)
+          setDeepAnalysing(d.status === 'running')
+        }
+      } catch {
+        // ignore
+      }
+    }
+    loadDeepStatus()
+    return () => { cancelled = true }
+  }, [id])
+
+  useEffect(() => {
+    if (!id || !deepAnalysing) return
+
+    const poll = setInterval(async () => {
+      try {
+        const r = await fetch(`/api/prospects/${id}/deep-analysis/status`)
+        if (!r.ok) return
+        const d = await r.json()
+        setDeepJob(d)
+
+        if (d.status === 'completed') {
+          clearInterval(poll)
+          setDeepAnalysing(false)
+          if (d.result) {
+            setDeepResult(d.result)
+            showToast(true,
+              `Deep analysis complete — ${d.result.new_signals_count} new signals, ` +
+              `${d.result.confirmed_count} confirmed, ${d.result.disputed_count} disputed ` +
+              `(${d.result.tokens_used?.toLocaleString() || 0} tokens)`
+            )
+            load()
+          }
+        } else if (d.status === 'failed') {
+          clearInterval(poll)
+          setDeepAnalysing(false)
+          showToast(false, d.error || d.message || 'Deep analysis failed')
+        }
+      } catch {
+        // ignore polling blips
+      }
+    }, 2000)
+
+    return () => clearInterval(poll)
+  }, [id, deepAnalysing])
 
   const showToast = (ok, msg) => {
     setToast({ ok, msg })
@@ -144,26 +199,19 @@ export default function ProspectDetail() {
   }
 
   const triggerDeepAnalysis = async () => {
-    setDeepAnalysing(true)
     setDeepResult(null)
     try {
-      const r = await fetch(`/api/prospects/${id}/deep-analysis`, { method: 'POST' })
+      const r = await fetch(`/api/prospects/${id}/deep-analysis/start`, { method: 'POST' })
       const d = await r.json()
       if (!r.ok) {
         showToast(false, d.detail || 'Deep analysis failed')
       } else {
-        setDeepResult(d)
-        showToast(true,
-          `Deep analysis complete — ${d.new_signals_count} new signals, ` +
-          `${d.confirmed_count} confirmed, ${d.disputed_count} disputed ` +
-          `(${d.tokens_used?.toLocaleString() || 0} tokens)`
-        )
-        load()  // refresh signals and profile
+        setDeepJob(d)
+        setDeepAnalysing(true)
       }
     } catch {
       showToast(false, 'Request failed')
     }
-    setDeepAnalysing(false)
   }
 
   const hasAISignals = signals.some(
@@ -389,6 +437,36 @@ export default function ProspectDetail() {
           {lastDeepAt && (
             <div className="font-mono text-xs mt-2" style={{ color: GOLD_BORDER }}>
               Last AI analysis: {new Date(lastDeepAt).toLocaleDateString()}
+            </div>
+          )}
+
+          {deepJob?.status === 'running' && (
+            <div className="mt-3 p-3" style={{ background: '#0d1017', border: `1px solid ${GOLD_BORDER}` }}>
+              <div className="flex items-center justify-between gap-3 mb-2">
+                <div className="font-mono text-xs" style={{ color: GOLD }}>
+                  ◆ {deepJob.message || 'Running deep analysis'}
+                </div>
+                <div className="font-mono text-xs" style={{ color: '#8fa3bf' }}>
+                  {deepJob.progress_pct || 0}%
+                </div>
+              </div>
+              <div style={{ height: 8, background: '#1e2530', overflow: 'hidden' }}>
+                <div style={{
+                  width: `${deepJob.progress_pct || 0}%`,
+                  height: '100%',
+                  background: 'linear-gradient(90deg, #8B7120 0%, #D4AF37 100%)',
+                  transition: 'width 0.3s ease',
+                }} />
+              </div>
+              <div className="font-mono text-xs mt-2" style={{ color: '#8fa3bf' }}>
+                {deepJob.stage === 'collecting_documents'
+                  ? 'Pulling and cleaning source documents'
+                  : deepJob.stage === 'running_ai'
+                  ? 'AI is reading the evidence pack'
+                  : deepJob.stage === 'saving_results'
+                  ? 'Saving the new findings'
+                  : deepJob.message || 'Working...'}
+              </div>
             </div>
           )}
 
