@@ -28,6 +28,7 @@ from datetime import datetime, timezone
 from typing import Callable, Optional
 from contextlib import asynccontextmanager
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -43,6 +44,8 @@ from pydantic import BaseModel, Field
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from psycopg2 import pool
+from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.cron import CronTrigger
 
 # ---------------------------------------------------------------------------
 # In-memory API key store (not persisted to DB — intentional)
@@ -80,7 +83,14 @@ def _reset_ai_progress():
 # In-memory refresh progress tracker
 # ---------------------------------------------------------------------------
 
-_refresh_progress: dict = {"running": False, "phase": "", "detail": ""}
+_refresh_progress: dict = {
+    "running": False,
+    "phase": "",
+    "detail": "",
+    "current": 0,
+    "total": 0,
+    "ticker": "",
+}
 _deep_analysis_jobs: dict = {}
 _deep_analysis_lock = threading.Lock()
 
@@ -123,6 +133,10 @@ ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "*").split(",")
 
 # Cron secret (protects /api/cron/enrich-all)
 CRON_SECRET = os.getenv("CRON_SECRET", "")
+AUTO_ASX_REFRESH_ENABLED = os.getenv("AUTO_ASX_REFRESH_ENABLED", "true").strip().lower() in {"1", "true", "yes", "on"}
+AUTO_ASX_REFRESH_TIMEZONE = os.getenv("AUTO_ASX_REFRESH_TIMEZONE", "Australia/Sydney")
+AUTO_ASX_REFRESH_HOUR = int(os.getenv("AUTO_ASX_REFRESH_HOUR", "9"))
+AUTO_ASX_REFRESH_MINUTE = int(os.getenv("AUTO_ASX_REFRESH_MINUTE", "0"))
 
 # Static files (built frontend)
 FRONTEND_DIST = Path(__file__).parent / "frontend" / "dist"
@@ -139,10 +153,11 @@ logger = logging.getLogger("api")
 # ---------------------------------------------------------------------------
 
 db_pool = None
+job_scheduler = None
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global db_pool
+    global db_pool, job_scheduler
     # Startup validation — fail fast with clear messages
     try:
         db_pool = pool.ThreadedConnectionPool(
@@ -188,7 +203,32 @@ async def lifespan(app: FastAPI):
         _api_key_store["source"] = "env"
         logger.info("Anthropic API key loaded from ANTHROPIC_API_KEY environment variable")
 
+    if AUTO_ASX_REFRESH_ENABLED:
+        job_scheduler = BackgroundScheduler(timezone=ZoneInfo(AUTO_ASX_REFRESH_TIMEZONE))
+        job_scheduler.add_job(
+            _run_daily_asx_refresh_job,
+            CronTrigger(
+                hour=AUTO_ASX_REFRESH_HOUR,
+                minute=AUTO_ASX_REFRESH_MINUTE,
+                timezone=ZoneInfo(AUTO_ASX_REFRESH_TIMEZONE),
+            ),
+            id="daily_asx_refresh",
+            replace_existing=True,
+            max_instances=1,
+        )
+        job_scheduler.start()
+        logger.info(
+            "Automatic ASX refresh scheduled for %02d:%02d %s each day",
+            AUTO_ASX_REFRESH_HOUR,
+            AUTO_ASX_REFRESH_MINUTE,
+            AUTO_ASX_REFRESH_TIMEZONE,
+        )
+
     yield
+    if job_scheduler:
+        job_scheduler.shutdown(wait=False)
+        job_scheduler = None
+        logger.info("Job scheduler stopped")
     if db_pool:
         db_pool.closeall()
         logger.info("Database pool closed")
@@ -1222,6 +1262,9 @@ def _run_refresh_with_progress(triggered_by: str):
     _refresh_progress["running"] = True
     _refresh_progress["phase"] = "Fetching ASX CSV..."
     _refresh_progress["detail"] = ""
+    _refresh_progress["current"] = 0
+    _refresh_progress["total"] = 0
+    _refresh_progress["ticker"] = ""
     run_id = None
 
     try:
@@ -1271,7 +1314,22 @@ def _run_refresh_with_progress(triggered_by: str):
             backfill_prospect_matrix(sconn)
             _refresh_progress["phase"] = "Fetching company locations..."
             _refresh_progress["detail"] = "Pulling registered office address data from ASX company profiles"
-            refresh_target_company_details(sconn, only_missing_location=True, triggered_by=triggered_by)
+            _refresh_progress["current"] = 0
+            _refresh_progress["total"] = 0
+            _refresh_progress["ticker"] = ""
+
+            def _location_progress(current: int, total: int, ticker: str):
+                _refresh_progress["current"] = current
+                _refresh_progress["total"] = total
+                _refresh_progress["ticker"] = ticker
+                _refresh_progress["detail"] = f"{current}/{total} location profiles checked - {ticker}"
+
+            refresh_target_company_details(
+                sconn,
+                only_missing_location=True,
+                triggered_by=triggered_by,
+                progress_callback=_location_progress,
+            )
             sconn.commit()
         finally:
             sconn.close()
@@ -1295,6 +1353,8 @@ def _run_refresh_with_progress(triggered_by: str):
 
         _refresh_progress["phase"] = "Complete"
         _refresh_progress["detail"] = f"{len(listings)} listings — {stats.new_listings} new, {stats.target_sector_count} target sector"
+        _refresh_progress["current"] = _refresh_progress["total"]
+        _refresh_progress["ticker"] = ""
         logger.info(f"Refresh complete: {len(listings)} listings")
     except Exception as e:
         logger.error(f"Refresh failed: {e}")
@@ -1317,6 +1377,21 @@ def _run_refresh_with_progress(triggered_by: str):
         _refresh_progress["running"] = False
 
 
+def _run_daily_asx_refresh_job():
+    """Scheduled daily ASX refresh for the always-on app service."""
+    if _refresh_progress["running"]:
+        logger.info("Scheduled ASX refresh skipped because another refresh is already running")
+        return
+
+    logger.info(
+        "Starting scheduled ASX refresh at %02d:%02d %s",
+        AUTO_ASX_REFRESH_HOUR,
+        AUTO_ASX_REFRESH_MINUTE,
+        AUTO_ASX_REFRESH_TIMEZONE,
+    )
+    _run_refresh_with_progress(triggered_by="scheduled_auto_refresh")
+
+
 @app.post("/api/refresh")
 def trigger_refresh(req: RefreshRequest, background_tasks: BackgroundTasks):
     """Trigger a manual ASX data refresh (runs in background)."""
@@ -1334,6 +1409,9 @@ def get_refresh_status():
         "running": _refresh_progress["running"],
         "phase": _refresh_progress["phase"],
         "detail": _refresh_progress["detail"],
+        "current": _refresh_progress["current"],
+        "total": _refresh_progress["total"],
+        "ticker": _refresh_progress["ticker"],
     }
 
 
