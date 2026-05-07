@@ -1,10 +1,20 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
+import ReactMarkdown from 'react-markdown'
 import { PressureBadge, StrengthBadge, StatusBadge } from '../components/Badges'
 
 const GOLD = '#D4AF37'
 const GOLD_BG = '#1a1508'
 const GOLD_BORDER = '#8B7120'
+
+function relTime(iso) {
+  const days = Math.floor((Date.now() - new Date(iso)) / 86400000)
+  if (days === 0) return 'today'
+  if (days === 1) return 'yesterday'
+  if (days < 7) return `${days}d ago`
+  if (days < 30) return `${Math.floor(days / 7)}w ago`
+  return `${Math.floor(days / 30)}mo ago`
+}
 
 const STATUS_ACTIONS = [
   { value: 'qualified', label: 'Qualify' },
@@ -74,6 +84,7 @@ export default function ProspectDetail() {
   const [deepResult, setDeepResult] = useState(null)
   const [deepJob, setDeepJob] = useState(null)
   const [isWatchlisted, setIsWatchlisted] = useState(false)
+  const [snapshot, setSnapshot] = useState(null)
 
   const [error, setError] = useState(null)
 
@@ -98,6 +109,15 @@ export default function ProspectDetail() {
   }
 
   useEffect(() => { load() }, [id])
+
+  useEffect(() => {
+    let cancelled = false
+    fetch(`/api/prospects/${id}/snapshot`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (!cancelled) setSnapshot(d) })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [id])
 
   useEffect(() => {
     let cancelled = false
@@ -538,6 +558,29 @@ export default function ProspectDetail() {
               })}
             </tbody>
           </table>
+        )}
+      </div>
+
+      {/* PitchBook Snapshot */}
+      <div className="card mb-4">
+        <div className="px-4 py-3 flex items-center gap-3" style={{ borderBottom: '1px solid #1e2530' }}>
+          <span className="font-mono text-xs uppercase tracking-widest" style={{ color: '#4a5a70' }}>
+            PitchBook Snapshot
+          </span>
+          {snapshot && (
+            <span className="font-mono text-xs" style={{ color: '#4a5a70' }}>
+              Last enriched: {relTime(snapshot.enriched_at)}
+            </span>
+          )}
+        </div>
+        {snapshot ? (
+          <div className="px-4 py-3 snapshot-md">
+            <ReactMarkdown>{snapshot.snapshot_markdown || ''}</ReactMarkdown>
+          </div>
+        ) : (
+          <div className="px-4 py-6 font-mono text-xs text-center" style={{ color: '#4a5a70' }}>
+            No PitchBook snapshot yet
+          </div>
         )}
       </div>
 

@@ -30,3 +30,17 @@ input, select, textarea {
   outline: none;
 }
 input:focus, select:focus, textarea:focus { border-color: #1e6fd4; }
+
+.snapshot-md h1, .snapshot-md h2, .snapshot-md h3 { color: #e2e8f0; font-weight: 600; margin: 0.6rem 0 0.2rem; }
+.snapshot-md h1 { font-size: 1rem; }
+.snapshot-md h2 { font-size: 0.9rem; }
+.snapshot-md h3 { font-size: 0.825rem; color: #8fa3bf; }
+.snapshot-md p  { font-size: 0.875rem; color: #c9d5e0; margin: 0.2rem 0; line-height: 1.5; }
+.snapshot-md ul, .snapshot-md ol { font-size: 0.875rem; color: #c9d5e0; padding-left: 1.25rem; margin: 0.2rem 0; }
+.snapshot-md li { margin: 0.1rem 0; }
+.snapshot-md strong { color: #e2e8f0; }
+.snapshot-md em    { color: #8fa3bf; }
+.snapshot-md code  { font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; background: #1e2530; padding: 0.1rem 0.3rem; color: #93c5fd; }
+.snapshot-md a     { color: #1e6fd4; text-decoration: none; }
+.snapshot-md a:hover { text-decoration: underline; }
+.snapshot-md hr    { border: none; border-top: 1px solid #1e2530; margin: 0.6rem 0; }

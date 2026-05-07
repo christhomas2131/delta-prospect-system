@@ -301,7 +301,7 @@ export default function ProspectMatrix({ watchlistOnly = false }) {
       {/* Table */}
       <div className="card">
         <div style={{ overflowX: 'auto' }}>
-          <table className="w-full" style={{ minWidth: 920 }}>
+          <table className="w-full" style={{ minWidth: 980 }}>
             <thead>
               <tr style={{ borderBottom: '1px solid #1e2530' }}>
                 <th className="px-3 py-2.5" style={{ width: 36 }} />
@@ -312,14 +312,15 @@ export default function ProspectMatrix({ watchlistOnly = false }) {
                 <SortHeader label="Score" field="prospect_score" sort={sort} dir={dir} onSort={handleSort} />
                 <th className="px-4 py-2.5 text-left font-mono text-xs uppercase" style={{ color: '#4a5a70' }}>Signals</th>
                 <th className="px-4 py-2.5 text-left font-mono text-xs uppercase" style={{ color: '#4a5a70' }}>Dominant</th>
+                <SortHeader label="PB" field="has_snapshot" sort={sort} dir={dir} onSort={handleSort} />
               </tr>
             </thead>
             <tbody>
               {loading && (
-                <tr><td colSpan={8} className="px-4 py-8 text-center font-mono text-xs" style={{ color: '#4a5a70' }}>Loading...</td></tr>
+                <tr><td colSpan={9} className="px-4 py-8 text-center font-mono text-xs" style={{ color: '#4a5a70' }}>Loading...</td></tr>
               )}
               {!loading && data.length === 0 && (
-                <tr><td colSpan={8} className="px-4 py-8 text-center font-mono text-xs" style={{ color: '#4a5a70' }}>No prospects found</td></tr>
+                <tr><td colSpan={9} className="px-4 py-8 text-center font-mono text-xs" style={{ color: '#4a5a70' }}>No prospects found</td></tr>
               )}
               {!loading && data.map(p => (
                 <tr
@@ -356,6 +357,12 @@ export default function ProspectMatrix({ watchlistOnly = false }) {
                     {p.primary_headwind
                       ? <span className="text-xs" style={{ color: '#8fa3bf' }}>{p.primary_headwind.slice(0, 30)}…</span>
                       : '—'}
+                  </td>
+                  <td className="px-4 py-2.5 text-center font-mono text-xs"
+                    title={p.has_snapshot ? 'PitchBook snapshot available' : 'No snapshot'}>
+                    <span style={{ color: p.has_snapshot ? '#22c55e' : '#2d3a4d' }}>
+                      {p.has_snapshot ? '●' : '○'}
+                    </span>
                   </td>
                 </tr>
               ))}

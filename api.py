@@ -42,7 +42,7 @@ from fastapi.responses import StreamingResponse, FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 import psycopg2
-from psycopg2.extras import RealDictCursor
+from psycopg2.extras import RealDictCursor, Json
 from psycopg2 import pool
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -326,6 +326,11 @@ class ProspectUpdate(BaseModel):
     warm_intro_contact: Optional[str] = None
 
 
+class SnapshotUpsert(BaseModel):
+    snapshot_data: dict = Field(default_factory=dict)
+    snapshot_markdown: Optional[str] = None
+
+
 class RefreshRequest(BaseModel):
     triggered_by: str = "manual"
 
@@ -416,7 +421,7 @@ def list_prospects(
             valid_sorts = {
                 "prospect_score", "company_name", "ticker", "market_cap_aud",
                 "status", "updated_at", "total_signals", "likelihood_score",
-                "lead_tier", "size_of_prize",
+                "lead_tier", "size_of_prize", "has_snapshot",
             }
             if sort_by not in valid_sorts:
                 sort_by = "prospect_score"
@@ -465,7 +470,8 @@ def list_prospects(
                     (SELECT ps2.source_url FROM pressure_signals ps2
                      WHERE ps2.prospect_id = pm.id
                      ORDER BY CASE ps2.strength WHEN 'strong' THEN 1 WHEN 'moderate' THEN 2 ELSE 3 END,
-                              ps2.detected_at DESC LIMIT 1) AS top_signal_url
+                              ps2.detected_at DESC LIMIT 1) AS top_signal_url,
+                    EXISTS(SELECT 1 FROM pitchbook_snapshots pb WHERE pb.prospect_id = pm.id) AS has_snapshot
                 FROM prospect_matrix pm
                 JOIN asx_listings l ON l.id = pm.listing_id
                 LEFT JOIN pressure_signals ps ON ps.prospect_id = pm.id
@@ -2088,6 +2094,52 @@ def search_companies(
             """, params + [f"{q}%", limit])
             
             return cur.fetchall()
+    finally:
+        put_conn(conn)
+
+
+# ---------------------------------------------------------------------------
+# Endpoints: PitchBook Snapshots (manual enrichment, ~10/week)
+# ---------------------------------------------------------------------------
+
+@app.post("/api/prospects/{prospect_id}/snapshot")
+def upsert_snapshot(prospect_id: str, body: SnapshotUpsert):
+    """UPSERT a PitchBook snapshot for a prospect. Auth required when credentials are configured."""
+    conn = get_conn()
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("""
+                INSERT INTO pitchbook_snapshots (prospect_id, snapshot_data, snapshot_markdown)
+                VALUES (%s, %s, %s)
+                ON CONFLICT (prospect_id) DO UPDATE SET
+                    snapshot_data     = EXCLUDED.snapshot_data,
+                    snapshot_markdown = EXCLUDED.snapshot_markdown,
+                    enriched_at       = NOW()
+                RETURNING *
+            """, (prospect_id, Json(body.snapshot_data), body.snapshot_markdown))
+            conn.commit()
+            row = cur.fetchone()
+            if not row:
+                raise HTTPException(status_code=404, detail="Prospect not found")
+            return row
+    finally:
+        put_conn(conn)
+
+
+@app.get("/api/prospects/{prospect_id}/snapshot")
+def get_snapshot(prospect_id: str):
+    """Return the PitchBook snapshot for a prospect, or 404 if none exists."""
+    conn = get_conn()
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(
+                "SELECT * FROM pitchbook_snapshots WHERE prospect_id = %s",
+                (prospect_id,),
+            )
+            row = cur.fetchone()
+            if not row:
+                raise HTTPException(status_code=404, detail="No snapshot found for this prospect")
+            return row
     finally:
         put_conn(conn)
 
