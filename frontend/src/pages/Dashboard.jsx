@@ -287,6 +287,24 @@ export default function Dashboard() {
               <span style={{ color: '#4a5a70' }}>{refreshProgress.detail}</span>
             )}
           </div>
+          {refreshProgress.total > 0 && (
+            <div className="mt-3">
+              <div className="mb-2 flex items-center justify-between" style={{ color: '#93c5fd' }}>
+                <span>{refreshProgress.current} / {refreshProgress.total} location profiles</span>
+                {refreshProgress.ticker && <span>{refreshProgress.ticker}</span>}
+              </div>
+              <div style={{ height: '6px', background: '#0f172a', border: '1px solid #1e3a5f' }}>
+                <div
+                  style={{
+                    height: '100%',
+                    width: `${Math.max(0, Math.min(100, (refreshProgress.current / refreshProgress.total) * 100))}%`,
+                    background: '#3b82f6',
+                    transition: 'width 0.2s ease',
+                  }}
+                />
+              </div>
+            </div>
+          )}
         </div>
       )}
 

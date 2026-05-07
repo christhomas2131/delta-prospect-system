@@ -561,7 +561,12 @@ def update_company_detail(conn, ticker: str, detail: dict, triggered_by: str) ->
         conn.commit()
 
 
-def refresh_target_company_details(conn, only_missing_location: bool = True, triggered_by: str = "system") -> int:
+def refresh_target_company_details(
+    conn,
+    only_missing_location: bool = True,
+    triggered_by: str = "system",
+    progress_callback=None,
+) -> int:
     """Backfill target-sector company detail, especially HQ location fields."""
     with conn.cursor(cursor_factory=RealDictCursor) as cur:
         where_clause = """
@@ -593,6 +598,8 @@ def refresh_target_company_details(conn, only_missing_location: bool = True, tri
     logger.info(f"Backfilling company detail for {len(tickers)} target-sector companies")
     with httpx.Client(headers=HTTP_HEADERS, timeout=HTTP_TIMEOUT) as client:
         for i, ticker in enumerate(tickers):
+            if progress_callback:
+                progress_callback(i + 1, len(tickers), ticker)
             detail = fetch_company_detail(client, ticker)
             if detail:
                 update_company_detail(conn, ticker, detail, triggered_by)
