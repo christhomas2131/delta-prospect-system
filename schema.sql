@@ -582,3 +582,18 @@ COMMENT ON TABLE pressure_signals  IS 'Pressure signals extracted from public fi
 COMMENT ON TABLE enrichment_log    IS 'Audit trail for all automated data pulls and analysis runs.';
 COMMENT ON TABLE gics_sector_map   IS 'Reference mapping: ASX GICS industry groups → sectors & target classification.';
 COMMENT ON TABLE refresh_runs      IS 'Tracks weekly and on-demand data refresh cycles.';
+
+-- ============================================================================
+-- PITCHBOOK SNAPSHOTS — manual enrichment for top prospects (~10/week)
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS pitchbook_snapshots (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    prospect_id     UUID UNIQUE REFERENCES prospect_matrix(id) ON DELETE CASCADE,
+    snapshot_data   JSONB NOT NULL DEFAULT '{}',
+    snapshot_markdown TEXT,
+    enriched_at     TIMESTAMP DEFAULT NOW(),
+    enriched_by     TEXT DEFAULT 'manual'
+);
+
+CREATE INDEX IF NOT EXISTS idx_pitchbook_snapshots_prospect ON pitchbook_snapshots(prospect_id);
