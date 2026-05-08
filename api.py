@@ -35,6 +35,7 @@ load_dotenv()
 
 import csv
 import io
+import json
 
 from fastapi import FastAPI, HTTPException, Query, BackgroundTasks, Request, Depends
 from fastapi.middleware.cors import CORSMiddleware
@@ -194,6 +195,57 @@ async def lifespan(app: FastAPI):
         db_pool.putconn(conn)
 
     logger.info("Database pool initialized — connection verified")
+
+    # Seed PitchBook snapshots from snapshots/*.json — idempotent UPSERT,
+    # runs on every deploy so committed JSONs are always in the DB.
+    snapshots_dir = Path(__file__).parent / "snapshots"
+    if snapshots_dir.is_dir():
+        snap_files = sorted(snapshots_dir.glob("*_snapshot.json"))
+        if snap_files:
+            logger.info("Seeding %d snapshot file(s) from snapshots/...", len(snap_files))
+            snap_conn = db_pool.getconn()
+            seeded = 0
+            try:
+                for snap_file in snap_files:
+                    try:
+                        payload = json.loads(snap_file.read_text(encoding="utf-8"))
+                        snap_data = payload.get("snapshot_data", {})
+                        snap_md   = payload.get("snapshot_markdown", "")
+                        ticker = (
+                            snap_data.get("ticker")
+                            or snap_file.name.split("_snapshot.json")[0].upper()
+                        )
+                        with snap_conn.cursor(cursor_factory=RealDictCursor) as cur:
+                            cur.execute("""
+                                SELECT pm.id AS prospect_id
+                                FROM prospect_matrix pm
+                                JOIN asx_listings l ON l.id = pm.listing_id
+                                WHERE l.ticker = %s AND l.is_active = TRUE
+                                LIMIT 1
+                            """, (ticker,))
+                            row = cur.fetchone()
+                        if not row:
+                            logger.warning("snapshots/%s: no prospect row for %s — skipping", snap_file.name, ticker)
+                            continue
+                        with snap_conn.cursor() as cur:
+                            cur.execute("""
+                                INSERT INTO pitchbook_snapshots
+                                    (prospect_id, snapshot_data, snapshot_markdown, enriched_at)
+                                VALUES (%s, %s, %s, NOW())
+                                ON CONFLICT (prospect_id) DO UPDATE SET
+                                    snapshot_data     = EXCLUDED.snapshot_data,
+                                    snapshot_markdown = EXCLUDED.snapshot_markdown,
+                                    enriched_at       = NOW()
+                            """, (str(row["prospect_id"]), Json(snap_data), snap_md))
+                        snap_conn.commit()
+                        seeded += 1
+                        logger.info("  snapshot seeded: %s", ticker)
+                    except Exception as e:
+                        logger.error("  snapshot %s failed: %s", snap_file.name, e)
+                        snap_conn.rollback()
+            finally:
+                db_pool.putconn(snap_conn)
+            logger.info("Snapshot seeding complete (%d/%d)", seeded, len(snap_files))
 
     # Auto-load Anthropic API key from environment variable if set
     env_key = os.getenv("ANTHROPIC_API_KEY", "").strip()

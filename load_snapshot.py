@@ -63,10 +63,16 @@ def main():
 
     ticker = args.ticker.upper()
 
-    # 1. Read JSON file
-    if not os.path.isfile(args.json_file):
-        print(f"ERROR: File not found: {args.json_file}", file=sys.stderr)
-        sys.exit(1)
+    # 1. Read JSON file — also check snapshots/ if not found at given path
+    json_path = args.json_file
+    if not os.path.isfile(json_path):
+        fallback = os.path.join(os.path.dirname(__file__), "snapshots", os.path.basename(json_path))
+        if os.path.isfile(fallback):
+            json_path = fallback
+        else:
+            print(f"ERROR: File not found: {json_path}", file=sys.stderr)
+            sys.exit(1)
+    args.json_file = json_path
 
     with open(args.json_file, encoding="utf-8") as f:
         payload = json.load(f)

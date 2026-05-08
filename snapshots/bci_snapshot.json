@@ -1,0 +1,61 @@
+{
+  "snapshot_data": {
+    "ticker": "BCI",
+    "company": "BCI Minerals Limited",
+    "as_of": "2026-05-07",
+    "financials": {
+      "market_cap_usd": 793500000,
+      "market_cap_yoy_pct": 48.21,
+      "enterprise_value_usd": 1100000000,
+      "ev_yoy_pct": 92.09,
+      "ttm_ebitda_normalized_usd": -44430000,
+      "ttm_period_end": "2025-12-31",
+      "ttm_operating_loss_usd": -53075000,
+      "ttm_net_loss_usd": -45854000,
+      "total_assets_usd": 918876000,
+      "total_debt_usd": 373353000,
+      "total_equity_usd": 517343000,
+      "debt_to_equity": 0.72,
+      "cash_flow_investing_ttm_usd": -259861000,
+      "cash_flow_financing_ttm_usd": 270012000
+    },
+    "capital_structure": {
+      "total_raised_usd": 1090000000,
+      "last_financing_date": "2024-10-04",
+      "last_financing_type": "Project Financing (Debt)",
+      "last_financing_amount_usd": 665320000,
+      "last_financing_purpose": "Mardie Salt Project",
+      "term_years": 11,
+      "maturity_date": "2035-10-04",
+      "lenders": [
+        {"name": "Westpac Banking", "amount_usd": 224480000},
+        {"name": "Export Finance Australia", "amount_usd": 108510000},
+        {"name": "Export Development Canada", "amount_usd": null},
+        {"name": "Industrial and Commercial Bank of China", "amount_usd": null}
+      ],
+      "active_investors": [
+        {"name": "Indonesia Asahan Aluminium", "type": "Corporation", "holding": "Minority", "since": "2023-07"},
+        {"name": "Endurance RP", "type": "Corporation", "holding": "Minority", "since": "2009-06"},
+        {"name": "Alkane Resources", "type": "Corporation", "holding": "Majority", "since": "2006-12"}
+      ]
+    },
+    "recent_news": [
+      {"date": "2026-04-28", "title": "Pilbara Salt Project De-risks Despite Cyclone Disruptions", "publisher": "Euroz Hartleys via MT Newswires"},
+      {"date": "2026-04-27", "title": "Reaches 81% Construction Completion for Western Australia Project", "publisher": "MT Newswires"},
+      {"date": "2026-03-11", "title": "Commissions Brine Channel, Crystallizer at Western Australia Project", "publisher": "MT Newswires"},
+      {"date": "2026-02-23", "title": "Posts Wider Fiscal H1 Loss, Lower Revenue", "publisher": "MT Newswires"},
+      {"date": "2026-01-28", "title": "WA Salt Project Expected to Achieve AU$250M EBITDA Per Year", "publisher": "Euroz Hartleys via MT Newswires"},
+      {"date": "2026-01-27", "title": "Construction 77% Complete in December 2025 Quarter", "publisher": "MT Newswires"},
+      {"date": "2025-12-23", "title": "Secures Primary Approvals for Optimised Dredge Strategy", "publisher": "Market Screener"},
+      {"date": "2025-12-22", "title": "Converts Over AU$29M Convertible Notes", "publisher": "MT Newswires"}
+    ],
+    "management_contacts": [
+      {"name": "David Boshoff", "title": "Managing Director & Board Member", "email": "davids.boshoff@bciminerals.com.au", "phone": "+61 (0)8 6311 3400", "priority": 1},
+      {"name": "Steve Fewster", "title": "Chief Financial Officer", "email": "sfewster@bciminerals.com.au", "phone": "+61 (0)8 6311 3400", "priority": 2},
+      {"name": "Robert Mancini", "title": "Chief Legal and Commercial Officer & Company Secretary", "email": "rmancini@bciminerals.com.au", "phone": "+61 (0)8 6311 3400", "priority": 3},
+      {"name": "Brian O'Donnell", "title": "Chairman", "email": null, "phone": "+61 (0)8 9215 8888", "priority": 4},
+      {"name": "Miriam Stanborough", "title": "Board Member", "email": null, "phone": "+61 (0)8 6311 3400", "priority": 5}
+    ]
+  },
+  "snapshot_markdown": "**BCI Minerals (ASX: BCI)** — Iron and Steel Mining, West Perth, AU. 51 employees. Pivoting from iron ore royalties into the Mardie Salt & Potash Project on the Pilbara coast.\n\n### Situational read\nHeavy build-out phase. 81% construction complete on Mardie as of late April 2026, brine channel and crystallizer commissioned March 2026. Euroz Hartleys projects AU$250M EBITDA/year once operational. Currently burning cash: TTM operating loss of -$53.1M, EBITDA -$44.4M, net loss -$45.9M. Capex heavy with -$259.9M in investing activity TTM. Cyclone disruptions noted but project still on track per April 28 analyst note.\n\n### Financials (USD, TTM ending Dec 31, 2025)\n- Market Cap **$793.5M** (+48% YoY), Enterprise Value **$1.10B** (+92% YoY)\n- Total Assets **$918.9M**, Total Debt **$373.4M** (up from $76.1M in FY2024), Total Equity **$517.3M**\n- Debt/Equity 0.72 — leverage building fast as project nears commissioning\n\n### Capital structure\n$1.09B raised to date. Anchor financing: **$665.3M Project Financing closed Oct 2024**, 11-year term loan maturing Oct 2035. Lender syndicate: Westpac ($224.5M), Export Finance Australia ($108.5M), Export Development Canada, ICBC. Recent equity: $39.3M PIPE Mar 2024, $67.1M PIPE Jul 2023 from Indonesia Asahan Aluminium. Largest holder: Alkane Resources (Majority, since 2006).\n\n### Recent activity (last 6 months)\nConstruction milestone announcements dominating news flow. Dec 2025 brought regulatory approvals for an optimised dredge strategy and AU$29M convertible note conversion. Feb 2026 H1 results showed widening loss but analyst tone has stayed positive on project progress.\n\n### Top contacts for outreach\n1. **David Boshoff** — Managing Director — davids.boshoff@bciminerals.com.au\n2. **Steve Fewster** — CFO — sfewster@bciminerals.com.au\n3. **Robert Mancini** — Chief Legal & Commercial Officer — rmancini@bciminerals.com.au\n\nMain line: +61 (0)8 6311 3400\n\n### Why they'd buy\nConstruction/commissioning phase = peak operational risk window. Cost overrun pressure, schedule pressure, contractor coordination. Cash burn means every operational efficiency matters. Lender oversight from a 4-bank syndicate adds governance discipline. Right time to pitch operational consulting."
+}

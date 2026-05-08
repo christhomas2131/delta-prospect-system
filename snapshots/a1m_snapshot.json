@@ -1,0 +1,65 @@
+{
+  "snapshot_data": {
+    "ticker": "A1M",
+    "company": "AIC Mines Limited",
+    "as_of": "2026-05-07",
+    "financials": {
+      "market_cap_usd": 347600000,
+      "market_cap_yoy_pct": 157.81,
+      "enterprise_value_usd": 315350000,
+      "ev_yoy_pct": 187.47,
+      "ttm_total_revenue_usd": 133783000,
+      "ttm_revenue_yoy_pct": 8.07,
+      "ttm_ebitda_normalized_usd": 54691000,
+      "ttm_ebitda_yoy_pct": 37.77,
+      "ttm_period_end": "2025-12-31",
+      "ttm_gross_profit_usd": 67313000,
+      "ttm_gross_margin_pct": 50.32,
+      "ttm_operating_profit_usd": 24379000,
+      "ttm_net_income_normalized_usd": 17248000,
+      "ev_to_revenue": 2.36,
+      "ev_to_ebitda": 5.77,
+      "fy2025_revenue_usd": 125085000,
+      "fy2025_ebitda_normalized_usd": 43072000,
+      "total_assets_usd": 283478000,
+      "total_debt_usd": 11301000,
+      "total_equity_usd": 214223000,
+      "debt_to_equity": 0.053,
+      "cash_flow_investing_ttm_usd": -86267000,
+      "cash_flow_financing_ttm_usd": 31908000,
+      "change_in_cash_ttm_usd": 141000,
+      "business_status": "Profitable"
+    },
+    "capital_structure": {
+      "total_raised_usd": 109360000,
+      "last_financing_date": "2025-06-24",
+      "last_financing_type": "PIPE",
+      "last_financing_amount_usd": 35650000,
+      "last_financing_amount_aud": 55000000,
+      "last_financing_purpose": "Eloise processing plant expansion + Jericho copper mine development",
+      "last_financing_lead_investor": "Hawke's Point",
+      "active_investors": [
+        {"name": "Hawke's Point", "type": "PE/Buyout", "holding": "Minority", "since": "2025-06"},
+        {"name": "FIDES Capital Partners", "type": "Real Estate", "holding": "Minority", "since": "2014-05"}
+      ],
+      "lenders": []
+    },
+    "recent_news": [
+      {"date": "2026-04-20", "title": "Unit Signs Asset Swap Deal With Cooper Metals; Shares Up 3%", "publisher": "MT Newswires"},
+      {"date": "2026-04-15", "title": "Posts Higher March Quarter Copper Production From Queensland Mine, Achieves Guidance; Shares Up 6%", "publisher": "MT Newswires"},
+      {"date": "2026-03-31", "title": "Starts Exploration Drilling at North Queensland Project", "publisher": "MT Newswires"},
+      {"date": "2026-03-30", "title": "Posts Increase in Combined Mineral Resource Estimate for Queensland Project", "publisher": "MT Newswires"},
+      {"date": "2026-02-01", "title": "Reaches Underground Queensland Copper Deposit; Shares Fall 3%", "publisher": "MT Newswires"},
+      {"date": "2026-01-28", "title": "Posts Lower Copper Production in December 2025 Quarter; Shares Down 3%", "publisher": "MT Newswires"},
+      {"date": "2026-01-28", "title": "Achieves Production, Cost Guidance in December Quarter, Shares Down 3%", "publisher": "MT Newswires"},
+      {"date": "2025-12-15", "title": "Extends Queensland Deposit; Shares Down 4%", "publisher": "MT Newswires"},
+      {"date": "2025-11-18", "title": "To Ramp Up Development of Queensland Copper Project", "publisher": "MT Newswires"},
+      {"date": "2025-10-16", "title": "Payable Copper Production Misses Expectations, Says Jefferies", "publisher": "MT Newswires"}
+    ],
+    "management_contacts": [
+      {"name": "Aaron Colleran", "title": "CEO, Managing Director & Board Member", "email": "aaron.colleran@aicmines.com.au", "phone": "+61 (0)2 8259 7000", "priority": 1},
+      {"name": "Tim Benfield", "title": "Chief Operating Officer", "email": "tim.benfield@aicmines.com.au", "phone": "+61 (0)2 8259 7000", "priority": 2, "note": "Direct line to operational pain — Eloise/Jericho ramp"}
+    ]
+  },
+  "snapshot_markdown": "**AIC Mines (ASX: A1M)** — Gold/Copper Mining, Subiaco, AU. 56 employees. Operates Eloise copper mine (Queensland) and is developing the adjacent Jericho copper deposit. Two segments: mining + exploration/corporate.\n\n### Situational read\nSmall-cap copper play in active expansion mode. Profitable on TTM basis ($54.7M EBITDA, 50% gross margin) but pouring cash into Eloise plant expansion and Jericho mine development — capex burn of -$86.3M TTM against only $31.9M financing inflow. Stock up 158% YoY on copper thesis. **Mixed operational signals over last 6 months:** Oct 2025 Jefferies note flagged production miss. Dec 2025 quarter copper production was lower (shares dropped). Jan 2026 the company hit cost/production guidance but stock still down. Feb 2026 underground deposit milestone hit but shares fell. Then Mar/Apr 2026 — bounced back with higher Q3 production, asset swap with Cooper Metals, and resource estimate upgrade. Volatile execution.\n\n### Financials (USD, TTM ending Dec 31, 2025)\n- Market Cap **$347.6M** (+158% YoY), Enterprise Value **$315.4M** (+187% YoY)\n- Total Revenue **$133.8M** (+8% YoY), Gross Margin **50.3%**, EBITDA **$54.7M** (+38% YoY)\n- EV/EBITDA 5.77x — cheap relative to peers if execution holds\n- Total Assets **$283.5M**, Total Debt **$11.3M**, Total Equity **$214.2M**, D/E 0.05 — almost no leverage\n- Capex **-$86.3M TTM** vs financing **+$31.9M** — burning cash on the build, will need to raise again\n\n### Capital structure\n$109.4M raised to date, all equity-funded. Recent: **$35.7M PIPE June 2025** led by Hawke's Point (PE) for Eloise expansion + Jericho development. Prior: $37.7M PIPE May 2024 (Jericho drives + ventilation), $21.0M PIPE Feb 2023. PE-friendly cap table: Hawke's Point and FIDES Capital both hold minority positions. No bank debt syndicate. 56 employees executing a multi-project ramp on a thin capital base.\n\n### Recent activity (last 6 months)\nProduction inconsistency is the dominant theme. Jefferies flagged miss in Oct, Dec quarter production dropped, Jan results showed guidance hit but the market wasn't impressed. Recovery in Q3 2026: higher production, resource estimate upgrade, exploration expansion at North Queensland, and an asset swap with Cooper Metals (Apr 2026). Underlying message: small team executing across too many projects (Jericho, Eloise, Cannington, Windsor, Pyramid, Delamerian, Marymia, Peake/Denison) for a 56-person headcount.\n\n### Top contacts for outreach\n1. **Aaron Colleran** — CEO/MD — aaron.colleran@aicmines.com.au\n2. **Tim Benfield** — COO — tim.benfield@aicmines.com.au (operational owner — pitch the production volatility angle here)\n\nMain line: +61 (0)2 8259 7000\n\n### Why they'd buy\nHigh fit. Small team (56 people) running 8+ project sites, with documented production volatility flagged by sell-side analysts. Capex-heavy ramp on Jericho + Eloise with PE investor (Hawke's Point) on the cap table — PE owners want operational discipline. Recent earnings calls and quarterly updates show the market is punishing every miss. Operational consulting that smooths quarter-to-quarter delivery is the exact pitch. COO Tim Benfield is the buyer."
+}

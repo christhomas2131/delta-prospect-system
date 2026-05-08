@@ -1,0 +1,74 @@
+{
+  "snapshot_data": {
+    "ticker": "LYC",
+    "company": "Lynas Rare Earths Limited",
+    "as_of": "2026-05-07",
+    "financials": {
+      "market_cap_usd": 14450000000,
+      "market_cap_yoy_pct": 197.16,
+      "enterprise_value_usd": 13900000000,
+      "ev_yoy_pct": 190.06,
+      "ttm_total_revenue_usd": 452390000,
+      "ttm_revenue_yoy_pct": 42.39,
+      "ttm_ebitda_normalized_usd": 122200000,
+      "ttm_ebitda_yoy_pct": 76.35,
+      "ttm_period_end": "2025-12-31",
+      "ttm_gross_profit_usd": 175397000,
+      "ttm_gross_margin_pct": 38.77,
+      "ttm_operating_profit_usd": 48062000,
+      "ttm_net_income_normalized_usd": 38751000,
+      "ev_to_revenue": 30.73,
+      "ev_to_ebitda": 113.76,
+      "fy2025_revenue_usd": 351212000,
+      "fy2025_ebitda_normalized_usd": 61736000,
+      "total_assets_usd": 2674145000,
+      "total_debt_usd": 142428000,
+      "total_equity_usd": 2252072000,
+      "debt_to_equity": 0.063,
+      "cash_flow_investing_ttm_usd": -342320000,
+      "cash_flow_financing_ttm_usd": 559261000,
+      "change_in_cash_ttm_usd": 300047000,
+      "business_status": "Profitable"
+    },
+    "capital_structure": {
+      "total_raised_usd": 784250000,
+      "last_financing_date": "2025-08-29",
+      "last_financing_type": "PIPE",
+      "last_financing_amount_usd": 486740000,
+      "last_financing_purpose": "Towards 2030 strategy: downstream processing capacity, non-Chinese metal/magnet supply chain expansion",
+      "in_progress_financing": {
+        "type": "PIPE (Share Purchase Plan)",
+        "announced_date": "2025-08-28",
+        "amount_usd": 48670000,
+        "amount_aud": 75000000,
+        "status": "Announced/In Progress"
+      },
+      "active_investors": [
+        {"name": "Hancock Prospecting", "type": "Corporation", "holding": "Minority", "since": "2024-04", "stake_pct": 5.82},
+        {"name": "Japan Australia Rare Earths", "type": "Corporation", "holding": "Minority", "since": "2023-03"}
+      ],
+      "lenders": []
+    },
+    "recent_news": [
+      {"date": "2026-05-03", "title": "Australia, Japan Elevate Critical Minerals as Core Pillar of Economic Security Cooperation", "publisher": "MT Newswires"},
+      {"date": "2026-04-20", "title": "Reports Higher Fiscal Q3 Gross Sales, Rare Earth Oxide Production", "publisher": "MT Newswires"},
+      {"date": "2026-04-13", "title": "JPMorgan Chase Ceases to be a Substantial Shareholder", "publisher": "MT Newswires"},
+      {"date": "2026-04-02", "title": "Bull Case Could Change Following License Renewal And Japan Deal Extension", "publisher": "Company Press Release"},
+      {"date": "2026-03-26", "title": "Lynas + LS Eco Energy Partner on Rare Earth Metals Production in Vietnam", "publisher": "Company Press Release"},
+      {"date": "2026-03-16", "title": "Signs Rare Earth Oxide Deal With US (US$96M offtake + price floor with DoW)", "publisher": "MT Newswires"},
+      {"date": "2026-03-12", "title": "Achieves First Samarium Oxide Production in Malaysia", "publisher": "MT Newswires"},
+      {"date": "2026-03-11", "title": "Japan Signs Revamped Long-Term Rare Earth Supply Deal with Lynas", "publisher": "MT Newswires"},
+      {"date": "2026-02-25", "title": "Posts Higher Fiscal H1 Earnings, Revenue", "publisher": "MT Newswires"},
+      {"date": "2026-01-XX", "title": "Secures 10-Year License Renewal for Malaysian Operations", "publisher": "MT Newswires"},
+      {"date": "2025-12-XX", "title": "CEO Amanda Lacaze to Retire June 2026 after 12 Years", "publisher": "Nikkei Asian Review / MT Newswires"},
+      {"date": "2025-11-XX", "title": "Power Outage at Western Australia Kalgoorlie Facility Caused Significant Production Loss", "publisher": "MT Newswires"}
+    ],
+    "management_contacts": [
+      {"name": "Gaudenz Sturzenegger", "title": "Chief Financial Officer", "email": "gsturzenegger@lynascorp.com", "phone": "+61 (0)8 6241 3800", "priority": 1, "note": "Stable seat through CEO transition"},
+      {"name": "Pol Roux", "title": "Chief Operating Officer", "email": "pr@lynascorp.com", "phone": "+61 (0)8 6241 3800", "priority": 2, "note": "Direct line to operational pain"},
+      {"name": "Daniel Havas", "title": "VP Strategy and Investor Relations", "email": "daniel.havas@lynascorp.com", "phone": "+61 (0)8 6241 3800", "priority": 3},
+      {"name": "Amanda Lacaze", "title": "CEO, Managing Director & Board Member", "email": "amanda.lacaze@lynascorp.com", "phone": "+61 (0)8 6241 3800", "priority": 4, "note": "STEPPING DOWN June 2026 — deprioritize for outreach"}
+    ]
+  },
+  "snapshot_markdown": "**Lynas Rare Earths (ASX: LYC)** — Precious Metals and Minerals Mining, Perth, AU. 1,127 employees. The largest rare-earth producer outside China. Owns the Mount Weld deposit (WA) and processing facilities in Kalgoorlie + Malaysia. Only producer of separated heavy rare-earth dysprosium and terbium outside China.\n\n### Situational read\nProfitable and scaling hard. Geopolitical tailwinds are absurd: 10-year Malaysian license renewal, revamped Japan supply deal, US$96M DoW offtake with price floor, Vietnam partnership, samarium production milestone. Just raised AU$750M (Aug 2025) plus another AU$75M SPP in progress to fund the Towards 2030 strategy: downstream metal and magnet supply chain expansion. Capex heavy at -$342M TTM. Stock up 197% YoY. **Two operational pressure flags worth pitching against:** (1) CEO Amanda Lacaze retiring June 2026 after 12 years — leadership inflection point. (2) Late-2025 Kalgoorlie power outage caused significant production loss, surfaced infrastructure vulnerability.\n\n### Financials (USD, TTM ending Dec 31, 2025)\n- Market Cap **$14.45B** (+197% YoY), Enterprise Value **$13.90B** (+190% YoY)\n- Total Revenue **$452.4M** (+42% YoY), Gross Margin **38.8%**, EBITDA **$122.2M** (+76% YoY)\n- EV/Revenue 30.7x, EV/EBITDA 113.8x — priced for execution\n- Total Assets **$2.67B**, Total Debt **$142.4M**, Total Equity **$2.25B**, D/E 0.06 — equity-funded growth, very low leverage\n\n### Capital structure\n$784M raised to date. Mostly equity-financed. Anchor recent deals: **$486.7M PIPE Aug 2025** (AU$750M) + $48.7M SPP in progress. March 2023 Japan Australia Rare Earths PIPE $146.3M, Aug 2020 Kalgoorlie expansion PIPE $151.2M. Hancock Prospecting holds 5.82% (since Apr 2024). No bank debt syndicate — projects funded through equity + government partnerships.\n\n### Recent activity (last 6 months)\nAvalanche of expansion news: US DoW supply deal (Mar), Japan deal extension (Mar), Vietnam metal-making JV with LS Eco (Mar), Malaysian samarium production milestone (Mar), 10-year Malaysian license renewal. April: higher Q3 sales reported, JPMorgan exited substantial position. **CEO retirement announced** for June 2026. Western Australia power outage (Nov 2025) flagged as operational risk.\n\n### Top contacts for outreach\n1. **Gaudenz Sturzenegger** — CFO — gsturzenegger@lynascorp.com\n2. **Pol Roux** — COO — pr@lynascorp.com (operational pain owner)\n3. **Daniel Havas** — VP Strategy & IR — daniel.havas@lynascorp.com\n\nMain line: +61 (0)8 6241 3800. Note: Amanda Lacaze is the listed primary contact in PitchBook but is **retiring June 2026** — deprioritize.\n\n### Why they'd buy\nMassive simultaneous build-out across three continents (Malaysia, Vietnam, US, WA Kalgoorlie ramp). CEO transition window = appetite for outside operational frameworks. Recent power outage exposed infrastructure resilience gaps in core production site. Growing 1,127-person org from a 998-person base with downstream complexity (metal + magnet) they've never operated before. Heavy capex + government counterparty oversight (US DoW, Japanese government deals) = operational maturity demands rising fast. Pitch the COO."
+}
