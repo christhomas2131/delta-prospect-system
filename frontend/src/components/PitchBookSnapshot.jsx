@@ -25,12 +25,12 @@ export default function PitchBookSnapshot({ prospectId }) {
 
   return (
     <div className="card mb-4">
-      <div className="px-4 py-3 flex items-center gap-3" style={{ borderBottom: '1px solid #1e2530' }}>
-        <span className="font-mono text-xs uppercase tracking-widest" style={{ color: '#4a5a70' }}>
+      <div className="px-4 py-3 flex items-center gap-3" style={{ borderBottom: '1px solid rgba(245,184,61,0.3)' }}>
+        <span className="font-mono text-xs uppercase tracking-widest font-semibold" style={{ color: '#f5b83d' }}>
           PitchBook Snapshot
         </span>
         {snapshot && (
-          <span className="font-mono text-xs" style={{ color: '#4a5a70' }}>
+          <span className="font-mono text-xs" style={{ color: '#6b7280' }}>
             Last enriched: {relTime(snapshot.enriched_at)}
           </span>
         )}
