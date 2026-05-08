@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { PillarBadge, StrengthBadge, StatusBadge, LeadTierBadge, PILLAR_COLORS, PILLAR_LABELS } from '../components/Badges'
+import PitchBookSnapshot from '../components/PitchBookSnapshot'
 
 const GOLD = '#D4AF37'
 const GOLD_BG = '#1a1508'
@@ -1283,6 +1284,9 @@ export default function DeepIntelligence() {
           )}
         </div>
       )}
+
+      {/* 8. PitchBook Snapshot */}
+      <PitchBookSnapshot prospectId={id} />
 
       {/* 9. Pressure Signals table */}
       <div className="card mb-4">
