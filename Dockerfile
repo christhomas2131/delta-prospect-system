@@ -27,6 +27,7 @@ COPY deep_analysis.py .
 COPY prize_calculator.py .
 COPY v3_intelligence.py .
 COPY schema.sql .
+COPY snapshots/ snapshots/
 
 EXPOSE ${PORT:-8000}
 

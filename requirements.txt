@@ -21,3 +21,6 @@ anthropic==0.89.0
 
 # Environment management
 python-dotenv==1.0.1
+
+# Timezone data for ZoneInfo (required in Docker — system tzdata not available in Playwright image)
+tzdata==2025.2
