@@ -22,7 +22,10 @@ from typing import Optional
 
 import psycopg2
 from psycopg2.extras import RealDictCursor
-from asx_browser import ASXFetcher
+try:
+    from asx_browser import ASXFetcher
+except ImportError:
+    ASXFetcher = None
 
 # ---------------------------------------------------------------------------
 # Config

@@ -10,9 +10,6 @@ psycopg2-binary==2.9.11
 # HTTP client (ASX API calls)
 httpx==0.28.1
 
-# Browser automation (ASX announcement fetching + token refresh)
-playwright==1.40.0
-
 # Scheduling (weekly cron)
 apscheduler==3.10.4
 
