@@ -1,0 +1,65 @@
+{
+  "snapshot_data": {
+    "ticker": "SVG",
+    "company": "Savannah Goldfields Limited",
+    "as_of": "2026-05-07",
+    "financials": {
+      "market_cap_usd": 16880000,
+      "enterprise_value_usd": 31920000,
+      "ttm_total_revenue_usd": 1511000,
+      "ttm_revenue_yoy_pct": 66.3,
+      "ttm_ebitda_normalized_usd": -4501000,
+      "ttm_period_end": "2025-12-31",
+      "ttm_gross_profit_usd": -2274000,
+      "ttm_gross_margin_pct": -30.24,
+      "ttm_operating_loss_usd": -5162000,
+      "ttm_net_loss_usd": -7539000,
+      "ttm_diluted_eps_normalized": -0.01,
+      "ev_to_revenue": 20.62,
+      "ev_to_revenue_diluted": 20.85,
+      "fy2024_revenue_usd": 7600000,
+      "fy2025_revenue_usd": 8000,
+      "fy2025_ebitda_normalized_usd": -3150000,
+      "total_assets_usd": 31314000,
+      "total_debt_usd": 15236000,
+      "total_liabilities_usd": 20195000,
+      "total_equity_usd": 11119000,
+      "debt_to_equity": 1.37,
+      "cash_flow_investing_ttm_usd": -802000,
+      "cash_flow_financing_ttm_usd": 8070000,
+      "change_in_cash_ttm_usd": 148000,
+      "business_status": "Generating Revenue (returning to production after halt)"
+    },
+    "capital_structure": {
+      "total_raised_usd": 20310000,
+      "last_financing_date": "2025-08-27",
+      "last_financing_type": "PIPE",
+      "last_financing_amount_usd": 9730000,
+      "last_financing_amount_aud": 15000000,
+      "last_financing_purpose": "Capital raising costs, working capital, creditor payments, repayment of senior secured loan, camp accommodation purchase, exploration drilling, plant maintenance, mining restart approvals, environmental bonds increase",
+      "last_financing_lead_investor": "Wes Maas, Stephen Bizzell, undisclosed investors",
+      "active_investors": [],
+      "lenders": [
+        {"name": "Senior secured lender (undisclosed)", "note": "Loan being repaid via Aug 2025 raise"}
+      ]
+    },
+    "recent_news": [
+      {"date": "2026-04-19", "title": "Savannah Goldfields Limited (ASX:SVG) Could Be Less Than A Year Away From Profitability", "publisher": "Company Press Release"},
+      {"date": "2026-01-28", "title": "Electric Light shines for Savannah Goldfields", "publisher": "Company Press Release"},
+      {"date": "2025-11-23", "title": "About Savannah Goldfields", "publisher": "Company Press Release"},
+      {"date": "2025-11-06", "title": "Resumes Gold Production at Queensland Project, Shares Rise 5%", "publisher": "MT Newswires"},
+      {"date": "2025-10-21", "title": "Hits High-Grade Gold in Georgetown Project Drilling via Share Cafe", "publisher": "Company Press Release"},
+      {"date": "2025-10-14", "title": "Prepares to Resume Production at Queensland Gold Project Before End of 2025", "publisher": "MT Newswires"},
+      {"date": "2025-10-09", "title": "Total Contained Gold at Queensland Deposit Grows 220%; Shares Jump", "publisher": "MT Newswires"},
+      {"date": "2025-10-07", "title": "Finds High Grade Gold Mineralization in Australia Project", "publisher": "MT Newswires"},
+      {"date": "2025-09-30", "title": "Undertakes Maintenance at Queensland Gold Project Processing Plant", "publisher": "MT Newswires"},
+      {"date": "2025-09-25", "title": "Starts Drilling at Electric Light Deposit", "publisher": "MT Newswires"}
+    ],
+    "management_contacts": [
+      {"name": "Bradley Sampson", "title": "Chief Executive Officer", "email": null, "phone": null, "office": "Brisbane, Australia", "priority": 1, "note": "Operational owner"},
+      {"name": "Paul Marshall", "title": "Chief Financial Officer & Company Secretary", "email": null, "phone": null, "office": "Brisbane, Australia", "priority": 2},
+      {"name": "Stephen Bizzell", "title": "Executive Chairman", "email": "sbizzell@bizzellcapital.com", "phone": "+61 (0)7 3012 4400", "mobile": "+61 (0)4 1761 8698", "priority": 3, "note": "Also a backer of the Aug 2025 capital raise — chairman is putting his own money in"}
+    ]
+  },
+  "snapshot_markdown": "**Savannah Goldfields (ASX: SVG)** — Multi-line Mining (gold/silver primary), Brisbane, AU. 18 employees. Owns Agate Creek and Georgetown Gold Project in North Queensland, Big Reef Mine lease, plus investments in other miners. Formerly Laneway Resources.\n\n### Situational read\nMicrocap distressed-recovery story. Company halted production, restructured, and just resumed mining at Queensland in November 2025 after a maintenance shutdown. **TTM revenue of $1.5M is recovery off near-zero**, gross margin still negative (-30%), EBITDA -$4.5M. Just raised AUD$15M (Aug 2025) backed in part by Executive Chairman Stephen Bizzell himself — that's a meaningful insider signal. Proceeds went to: senior secured loan repayment, creditor payments, plant maintenance, mining restart approvals, environmental bonds. **Translation: this company was financially underwater and is now in operational restart mode with chairman skin in the game.** April 2026 press release suggests profitability target within 12 months. Resource estimate at Queensland deposit grew 220% in October. Real turnaround attempt.\n\n### Financials (USD, TTM ending Dec 31, 2025)\n- Market Cap **$16.9M**, Enterprise Value **$31.9M** (debt-laden relative to equity)\n- TTM Revenue **$1.5M** (+66% YoY off a tiny base), Gross Margin **-30%**, EBITDA **-$4.5M**\n- Total Assets **$31.3M**, Total Debt **$15.2M**, Total Equity **$11.1M**, **D/E 1.37** — high leverage for a microcap\n- Cash flow: financing inflows of $8.1M TTM keeping the lights on, investing nearly flat at -$0.8M\n- 18 employees running a multi-site operation\n\n### Capital structure\n$20.3M raised cumulative. Recent: **$9.73M PIPE Aug 2025** (AUD$15M) backed by Wes Maas, Stephen Bizzell (the chairman), and undisclosed investors. Use of proceeds is the most informative single line in the whole report: *\"capital raising costs, working capital, creditor payments, repayment of senior secured loan, camp accommodation, exploration drilling, plant maintenance, mining restart approvals, environmental bonds.\"* That's a turnaround playbook. Prior raises in March 2025 ($5.48M), Feb 2022 ($2.21M).\n\n### Recent activity (last 6 months)\nProduction resumed November 2025 after maintenance shutdown. Resource estimate at Georgetown grew 220% in October. New drilling at Electric Light deposit. Press positioning around \"profitability within a year.\" The narrative is shifting from distressed → recovery, but execution risk is high given the 18-person headcount and history.\n\n### Top contacts for outreach\n1. **Bradley Sampson** — CEO — based Brisbane (need to source email)\n2. **Paul Marshall** — CFO & Company Secretary — Brisbane (need to source email)\n3. **Stephen Bizzell** — Executive Chairman — sbizzell@bizzellcapital.com — chairman who put his own money in the last raise\n\n### Why they'd buy\nClassic operational consulting fit. Distressed-restart microcap with 18 staff, multiple project sites, high leverage, environmental bond obligations, contractor coordination challenges, and a chairman who is personally exposed to whether the restart actually delivers. Mining restart approvals + plant maintenance + environmental bonds are all in the explicit use-of-proceeds list — those are operational pain points New Delta solves. The chairman angle matters: pitch Bizzell directly via his Bizzell Capital email, his money is on the line. CEO Sampson is the implementation partner."
+}
