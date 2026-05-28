@@ -1003,8 +1003,41 @@ export default function DeepIntelligence() {
       {/* Toast */}
       {toastEl}
 
+      {/* DQ Banner — shown only when status is disqualified */}
+      {prospect.status === 'disqualified' && (
+        <div className="mb-4" style={{ border: '1px solid #7f1d1d' }}>
+          {/* Hazard stripe bar */}
+          <div style={{
+            background: 'repeating-linear-gradient(45deg, #1a0000, #1a0000 14px, #2a0505 14px, #2a0505 28px)',
+            padding: '10px 20px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 12,
+          }}>
+            <span style={{ color: '#ef4444', fontSize: 20, lineHeight: 1 }}>⊘</span>
+            <span className="font-mono font-bold" style={{
+              color: '#ef4444',
+              fontSize: 13,
+              letterSpacing: '0.2em',
+              textShadow: '0 0 12px rgba(239,68,68,0.5)',
+            }}>
+              DISQUALIFIED — NOT A PROSPECT
+            </span>
+            <span style={{ color: '#ef4444', fontSize: 20, lineHeight: 1 }}>⊘</span>
+          </div>
+          {/* DQ reason */}
+          {prospect.dq_reason && (
+            <div style={{ background: '#110202', padding: '10px 20px', borderTop: '1px solid #3b0808' }}>
+              <span className="font-mono" style={{ color: '#4a5a70', fontSize: 10, letterSpacing: '0.12em', marginRight: 8 }}>DQ REASON</span>
+              <span className="font-mono" style={{ color: '#cd6464', fontSize: 11 }}>{prospect.dq_reason}</span>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* 1. Header card */}
-      <div className="card p-5 mb-4">
+      <div className="card p-5 mb-4" style={prospect.status === 'disqualified' ? { borderColor: '#3b0808', opacity: 0.75 } : {}}>
         <div className="flex items-start justify-between flex-wrap gap-4">
           <div>
             <div className="flex items-center gap-3 mb-1 flex-wrap">
