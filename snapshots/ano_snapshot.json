@@ -1,0 +1,80 @@
+{
+  "snapshot_data": {
+    "ticker": "ANO",
+    "company": "Advance ZincTek Limited",
+    "as_of": "2026-05-27",
+    "financials": {
+      "market_cap_usd_m": 35.92,
+      "market_cap_aud_m": 50.12,
+      "enterprise_value_usd_m": 36.31,
+      "diluted_market_cap_usd_m": 35.92,
+      "diluted_enterprise_value_usd_m": 36.34,
+      "stock_price_aud": 0.80,
+      "ttm_revenue_usd_m": 8.11,
+      "ttm_revenue_growth_yoy": 0.2989,
+      "ttm_ebitda_usd_m": 2.70,
+      "ttm_ebitda_growth_yoy": 2.20,
+      "ttm_ebitda_margin": 0.3213,
+      "ttm_net_income_usd_m": 0.994,
+      "ttm_net_profit_margin": 0.1142,
+      "ttm_operating_profit_usd_m": 1.18,
+      "cash_usd_m": 0.40,
+      "total_debt_usd_m": 0.80,
+      "total_assets_usd_m": 6.24,
+      "total_equity_usd_m": null,
+      "capex_to_sales": 0.08,
+      "key_ratios": {
+        "ev_to_revenue": 4.48,
+        "ev_to_ebitda_normalized": 13.43,
+        "price_to_earnings": 34.78,
+        "price_to_earnings_normalized": 49.63,
+        "wacc": 0.0821,
+        "cost_of_equity": 0.0839,
+        "cost_of_debt_after_tax": 0.0237,
+        "debt_to_equity": 0.0006,
+        "interest_coverage_ttm": 35.59,
+        "dividend_yield": 0.0246,
+        "esg_risk_rating_high": 36.34
+      },
+      "operating_history": "Profitable status per PitchBook. Manufacturing operation in business since 1997. Balance sheet history shows 8+ years of zero meaningful debt and consistent positive equity through multiple cycles. Three-stage inventory accounting (raw materials, WIP, finished goods) — this is a real manufacturer, not a sales shell.",
+      "total_returns": {"1yr": 0.19, "3yr": -0.52, "5yr": -0.79, "10yr": 2.35, "15yr": 1.11}
+    },
+    "capital_structure": {
+      "total_raised_usd_m": null,
+      "deal_history": [
+        {"date": "2024-02-06", "type": "Secondary Transaction - Private", "stake": "12.17%", "note": "Undisclosed investor sold to ANKLA PTY LTD"},
+        {"date": "2023-01-01", "type": "Merger/Acquisition", "amount_usd_m": 21.40, "post_val_usd_m_disputed": 365.85, "acquirer": "ANKLA PTY LTD", "note": "Post-val figure of $365.85M from PitchBook does not reconcile with current market cap. Treat as data anomaly until confirmed."},
+        {"date": "2005-02-24", "type": "IPO"}
+      ],
+      "active_investors": [
+        {"name": "ANKLA PTY LTD", "type": "Corporation (Acquirer)", "since": "Jan 2023", "context": "Lead acquirer in 2023, added to position via Feb 2024 secondary."}
+      ],
+      "lenders": [],
+      "ownership_status": "Publicly held, Profitable, Publicly Listed",
+      "debt_profile": "Lease liabilities only ($799K, 100% leases, senior unsecured). Zero bank debt, zero term loans, zero bonds.",
+      "patents": {"families": 19, "active": 11, "pending": 5, "inactive": 43, "top_tech": "Compounds containing metals (mesoporous zinc oxide powder, rare earth nanorods)", "recent_filings_2025_2026": "2 patents filed in 2025, 1 in 2026"}
+    },
+    "recent_news": [
+      {"date": "2026-04-07", "headline": "Advance ZincTek Confirms Zinc Oxide's Exemption From US Tariffs On Pharmaceuticals", "publisher": "MT Newswires", "topic": "Regulatory / Operations"},
+      {"date": "2026-02-12", "headline": "Advance ZincTek to Return Capital of Around AU$1.3 Million to Shareholders", "publisher": "MT Newswires", "topic": "Capital Return"},
+      {"date": "2026-01-08", "headline": "Advance ZincTek Faces FDA Import Alert Amid Tariff Concerns; Shares Fall 3%", "publisher": "MT Newswires", "topic": "Regulatory"},
+      {"date": "2025-11-16", "headline": "Advance ZincTek says FDA identifies GMP compliance issues requiring remediation", "publisher": "Market Screener", "topic": "Regulatory — Active"},
+      {"date": "2025-10-02", "headline": "Advance ZincTek Says Fiscal 2026 Q1 Sales Up 27%", "publisher": "MT Newswires", "topic": "Growth"},
+      {"date": "2025-09-25", "headline": "Advance ZincTek 'Hopeful' Zinc Oxide Products Not Being Impacted by New US Pharmaceutical Tariffs", "publisher": "MT Newswires", "topic": "Tariff Exposure"},
+      {"date": "2025-09-02", "headline": "Advance ZincTek Clarifies No Involvement in Sunscreen SPF Failures", "publisher": "MT Newswires", "topic": "Reputational / Quality"},
+      {"date": "2025-07-09", "headline": "Advance ZincTek Confirms No Immediate Impact on Business by Potential US Tariffs", "publisher": "MT Newswires", "topic": "Tariff Exposure"},
+      {"date": "2025-06-29", "headline": "Advance ZincTek Projects AU$2.7 Million Profit Turnaround", "publisher": "MT Newswires", "topic": "Growth"}
+    ],
+    "management_contacts": [
+      {"name": "Geoff Acton", "role": "Managing Director", "email": "gacton@advancezinctek.com", "phone": "+61 (0)7 3726 2030", "priority": "high", "note": "Sole listed executive on a 25-person manufacturer scaling 30% YoY with active FDA remediation underway. He is the operational decision-maker, the capital allocator, and the public spokesperson all in one. Pitch operator-to-operator: scale-up systems before the next FDA touchpoint or tariff shock catches you flat-footed."}
+    ],
+    "office": {"address": "1821 Ipswich Road, Rocklea / Welshpool, Perth, Western Australia 4106, Australia", "main": "+61 (0)7 3726 2030", "fax": "+61 (0)8 9258 1699", "email": "gacton@advancezinctek.com"},
+    "tier_recommendation": {
+      "verdict": "A-tier / strong outreach target",
+      "rationale": "Cleanest New Delta fit since A1M. Profitable, growing 30% YoY EBITDA +220% YoY, real manufacturing operations with three-stage inventory and 19 patent families. Active FDA GMP remediation (Nov 2025), FDA Import Alert (Jan 2026), tariff exposure (4 public statements in 9 months), and a reputational quality scandal (Sep 2025) all hitting a 25-person company with a sole MD. Textbook operator-needs-help-they-can't-self-fix profile.",
+      "pitch_anchor": "Operational scale-up: manufacturing systems, inventory/working-capital discipline, and quality governance — not FDA-specific regulatory consulting. The FDA story is the catalyst, not the deliverable.",
+      "risks_to_flag_jess": ["High ESG risk score (36.34) — manageable but worth pre-thinking", "Post-val anomaly on the 2023 ANKLA acquisition ($365.85M post-val vs current $35.92M market cap — data may be miscoded, verify before referencing in outreach)", "ANKLA acquired in Jan 2023 and added to position in Feb 2024 — confirm whether ANKLA controls or just holds minority before pitching independent governance work"]
+    }
+  },
+  "snapshot_markdown": "**Advance ZincTek Limited (ASX: ANO)** — Specialty Chemicals (Pharmaceutical-grade Zinc Oxide + Aluminum Oxide manufacturer for Personal Care sector). Perth, Western Australia. 25 employees. Founded 1997. Manufactures Alusion (aluminum oxide for cosmetics) and ZinClear (zinc oxide dispersions for sunscreen and skincare). Primary markets: US, Canada, Australia, ROW. Single operating segment: Personal Care.\n\n## Situational read\nFirst clean New Delta fit since A1M. This is a real manufacturer with real revenue, real margins, real IP, and a real operating system to optimize. **Business Status: Profitable.** TTM revenue $8.11M USD growing 30% YoY. EBITDA margin 32%. Net profit margin 11.4%. Net income $994K. Zero meaningful debt. 19 patent families with active filings as recent as April 2026 (rare earth nanorods, mesoporous zinc oxide powder).\n\nBut the operating environment is hostile and getting more so. In the last 9 months Geoff Acton has personally fronted: an FDA GMP compliance remediation (Nov 2025), an FDA Import Alert (Jan 2026, shares fell 3%), four separate public statements clarifying tariff exposure, and a Sep 2025 reputational scandal where ZincTek had to issue two clarifications in a single day distancing itself from sunscreen products that failed SPF testing. Through all that, they hit Fiscal 2026 Q1 sales up 27% and announced a $1.3M return of capital to shareholders in Feb 2026.\n\nThe story is straightforward: a 25-person manufacturer with growing demand, growing regulatory burden, growing reputational exposure, and one Managing Director carrying the whole stack. Geoff Acton is doing well — but doing well alone, in a regulatory environment where one more FDA letter or one more product failure misattribution could puncture the growth story. The operational system that worked at $6M revenue will not work at $15M.\n\n## Financials (USD, TTM ending Dec 31, 2025)\nMarket Cap **$35.92M** (AUD $50.12M, +16.48% YoY)\nEnterprise Value **$36.31M** (+13.82% YoY)\nTTM Revenue **$8.11M** (+29.89% YoY)\nTTM EBITDA Normalized **$2.70M** (+220.45% YoY)\nNet Income (Analyst Normalized) **$994K** | Net Profit Margin **11.42%**\nEBITDA Margin **32.13%** | Gross Margin ~59%\nCash **$400K** | Total Debt **$799K** (100% lease liabilities, zero bank/term debt)\nWACC 8.21% | Cost of Equity 8.39% | Cost of Debt (after tax) 2.37%\nP/E 34.78 | EV/Revenue 4.48 | EV/EBITDA 13.43\nDividend Yield 2.46% (semi-annual)\n10Y total return +235% | 15Y total return +111% | 1Y +19% (recent compression on FDA news)\n\n## Capital structure\n**Acquisition-driven, not capital-raise-driven.** No recent equity raises. IPO Feb 2005. Merger/Acquisition by **ANKLA PTY LTD** Jan 2023 for $21.40M (post-val data point of $365.85M does not reconcile — verify before referencing). Secondary Transaction Feb 2024 where an undisclosed investor sold a 12.17% stake to ANKLA.\n\n**Debt profile is clean.** $799K total debt is 100% lease liabilities. Zero commercial paper, zero revolving credit, zero term loans, zero bonds.\n\n**IP moat is real.** 19 patent families, 11 active, 5 pending. Top technology: mesoporous zinc oxide powder and rare earth nanorods. 2 new filings in 2025, 1 in 2026.\n\n## Recent activity (last 6 months)\nSep 2 2025 — two public clarifications same day, distancing from the SPF sunscreen failures story. Sep 25 — first tariff statement. Oct 2 — Q1 FY26 sales +27%. Nov 16 — FDA identifies GMP compliance issues, public commitment to remediation. Jan 8 2026 — FDA Import Alert issued, shares down 3%. Feb 12 — Board announces $1.3M capital return to shareholders. April 7 — pharma zinc oxide carved out of new US tariff regime.\n\n## Top contacts for outreach\n**Primary target:** **Geoff Acton** (Managing Director, gacton@advancezinctek.com, +61 7 3726 2030). He is the operational decision-maker, capital allocator, and public spokesperson. Pitch operator-to-operator. No COO, no Quality Director, no VP Operations listed — Acton wears every hat.\n\n## Why they'd buy\nANO is the textbook New Delta thesis at the precise inflection point where it works: a profitable, growing, IP-defended manufacturer where the operating system that got them here will not get them to the next stage. Entry points: GMP/QMS buildout for FDA remediation, working-capital discipline at 30% growth, operating model design for scale, LTO posture for regulatory resilience.\n\n**Tier: A-tier.** Cleanest operator-fit profile since A1M. Recommend Jess prioritize for first-touch via the production/scale-up angle, with the FDA situation as the conversation opener but not the deliverable scope."
+}
