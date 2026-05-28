@@ -39,3 +39,4 @@ browser_data/
 dist/
 build/
 *.exe
+backups/
