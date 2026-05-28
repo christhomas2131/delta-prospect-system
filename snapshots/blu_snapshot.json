@@ -1,0 +1,91 @@
+{
+  "snapshot_data": {
+    "ticker": "BLU",
+    "company": "Blue Energy Limited",
+    "as_of": "2026-05-27",
+    "financials": {
+      "market_cap_usd_m": 10.79,
+      "market_cap_aud_m": 16.0,
+      "enterprise_value_usd_m": 7.51,
+      "diluted_market_cap_usd_m": 12.95,
+      "diluted_enterprise_value_usd_m": 9.49,
+      "stock_price_aud": 0.01,
+      "ttm_revenue_usd_m": 0.0,
+      "ttm_operating_loss_usd_m": -0.92,
+      "ttm_ebitda_usd_m": -0.85,
+      "ttm_net_income_usd_m": -0.87,
+      "cash_usd_m": 3.33,
+      "total_debt_usd_m": 0.042,
+      "total_assets_usd_m": 52.51,
+      "total_equity_usd_m": 51.71,
+      "key_ratios": {
+        "debt_to_equity": 0.0001,
+        "ev_to_revenue": "n/a (zero current revenue)",
+        "current_ratio": 8.28,
+        "roic_ttm": -0.019,
+        "wacc": 0.0581,
+        "cost_of_equity": 0.0577,
+        "cost_of_debt_after_tax": 0.082,
+        "total_returns_5yr": -0.94,
+        "total_returns_10yr": -0.80,
+        "total_returns_15yr": -0.96,
+        "esg_risk_rating_severe": 43.19
+      },
+      "operating_burn_pattern": "Quarterly operating cash burn $150K-$400K USD, fairly disciplined for a 2-employee shell. Burn supported by periodic large equity raises.",
+      "share_dilution": "3.0B shares outstanding (62% increase from 1.85B in mid-2025 after Aug 2025 PIPE), up from 294M in 2007. Significant dilution but tied to real capital deployment, not zombie maintenance."
+    },
+    "capital_structure": {
+      "total_raised_usd_m": 230.46,
+      "last_financing": {
+        "type": "PIPE",
+        "date": "2025-08-29",
+        "amount_usd_m": 3.20,
+        "investors_disclosed": false
+      },
+      "deal_history": [
+        {"date": "2025-08-29", "type": "PIPE", "amount_usd_m": 3.20, "raised_to_date_usd_m": 230.46},
+        {"date": "2022-07-28", "type": "PIPE", "amount_usd_m": 13.68, "raised_to_date_usd_m": 227.26},
+        {"date": "2021-09-22", "type": "PIPE", "amount_usd_m": 7.32, "raised_to_date_usd_m": 213.57},
+        {"date": "2018-01-12", "type": "PIPE", "amount_usd_m": 2.02, "raised_to_date_usd_m": 206.25},
+        {"date": "2015-12-21", "type": "Debt - General", "amount_usd_m": 124.77, "raised_to_date_usd_m": 204.24, "lenders": ["Green Investment Group (UK)", "Kohlberg Kravis Roberts (KKR)", "Temporis Capital"]},
+        {"date": "2011-04-01", "type": "PIPE", "amount_usd_m": 6.00, "raised_to_date_usd_m": 79.47},
+        {"date": "2009-05-29", "type": "PIPE", "amount_usd_m": 7.17, "raised_to_date_usd_m": 73.47},
+        {"date": "2008-08-07", "type": "PIPE", "amount_usd_m": 31.60, "raised_to_date_usd_m": 66.30},
+        {"date": "2007-01-01", "type": "PIPE", "amount_usd_m": 34.70, "raised_to_date_usd_m": 34.70},
+        {"date": "1994-10-13", "type": "IPO"}
+      ],
+      "active_investors": [
+        {"name": "IFM Investors", "type": "PE/Buyout", "holding": "Minority", "since": "Jan 2018", "context": "Australia's largest pension fund manager"},
+        {"name": "Mathews Capital", "type": "Corporation", "holding": "Minority", "since": "Apr 2011"},
+        {"name": "Korean Gas", "type": "Corporation", "holding": "Minority", "since": "May 2009", "context": "Strategic — South Korean state gas utility (KOGAS)"},
+        {"name": "Stanwell", "type": "Corporation", "holding": "Minority", "since": "Aug 2008", "context": "Strategic — Queensland state-owned power generator"},
+        {"name": "Chimaera Capital", "type": "Investment Bank", "holding": "Minority", "since": "Jan 2007"},
+        {"name": "Cornerstone Investments", "type": "PE/Buyout", "holding": "Minority", "since": "Jan 2007"}
+      ],
+      "lenders": ["Green Investment Group (UK)", "Kohlberg Kravis Roberts (KKR)", "Temporis Capital"],
+      "ownership_status": "Publicly held, Debt-Financed, Private-Equity-Financed, Publicly Listed",
+      "service_providers": ["MST Financial (Advisor, Jul 2022)", "Petra Capital (Placement Agent, Jul 2022)", "Bell Potter (Placement Agent, Jan 2018)", "Crowe (Advisor, Aug 2008)"]
+    },
+    "recent_news": [
+      {"date": "2026-04-21", "headline": "Blue Energy Raises $380 Million to Build Nukes for Data Centers", "publisher": "Bloomberg", "topic": "Financing"},
+      {"date": "2025-11-24", "headline": "Introduction of Blue Energy", "publisher": "Company Press Release"},
+      {"date": "2025-10-30", "headline": "Blue Energy Plans Data Center Plant Powered by Gas, Then Nuclear", "publisher": "Bloomberg"},
+      {"date": "2025-09-23", "headline": "Infra Dig: the US nuclear scene with Blue Energy", "publisher": "Company Press Release"},
+      {"date": "2024-10-08", "headline": "Blue Energy Secures $45M to Make Clean, Reliable Nuclear Power Commercially Viable", "publisher": "Company Press Release", "topic": "Financing"},
+      {"date": "2024-10-02", "headline": "Exclusive: Blue Energy raises $45M for underwater reactors", "publisher": "Axios", "topic": "Financing"},
+      {"date": "2023-09-07", "headline": "Strategic partnership to generate BlueEnergy in the Life HyReward Project", "publisher": "Company Press Release"},
+      {"date": "2023-09-04", "headline": "Blue Energy continues to add shine to Sapphire gas project", "publisher": "Company Press Release"}
+    ],
+    "management_contacts": [
+      {"name": "John Phillips", "role": "CEO / Managing Director", "email": "john.phillips@blueenergy.com.au", "phone": "+61 (0)7 3270 8800", "priority": "high", "note": "Sole operating executive on a $230M-raised, 2-employee strategic vehicle pivoting from CSG exploration to gas-then-nuclear data center power. He is the entire operational team. Pitch angle: scale-up execution gap."},
+      {"name": "John Ellice-Flint", "role": "Chairman & Executive Board Member", "phone": "+61 (0)7 3270 8800", "priority": "high", "note": "Former Santos CEO. Heavy-hitter chairman who will recognize operational pain when scale-up demands hit. Board-level pitch — frame as institutional credibility, not tactical fix."}
+    ],
+    "office": {"address": "Level 10, 26 Wharf Street, Brisbane, Queensland 4000, Australia", "main": "+61 (0)7 3270 8800", "email": "info@blueenergy.com.au"},
+    "tier_recommendation": {
+      "verdict": "Watch / B-tier",
+      "rationale": "Unusual case. Tiny operating footprint (2 employees) but real institutional capital ($230M raised, KKR + Green Investment Group on debt, IFM + Korean Gas + Queensland Stanwell on equity) and a credible strategic pivot to gas-fired data center power and Small Modular Reactors. The $380M April 2026 raise is the inflection point — they now have to actually build something with 2 people. That's a textbook ambition-outrunning-execution gap. Not a classic mining-operator pitch, but a legitimate scale-up consulting opportunity.",
+      "risks_to_flag_jess": ["Severe ESG risk score (43.19 — fossil + nuclear in Australia is politically loaded)", "No commercial nuclear in Australia today — SMR thesis is highly speculative", "Sole exec John Phillips has been at the helm since IPO era; succession risk on a project of this scale"]
+    }
+  },
+  "snapshot_markdown": "**Blue Energy Limited (ASX: BLU)** — Energy Exploration (Oil & Gas E&P, transitioning to gas-fired data center power and Small Modular Reactor development). Brisbane, Queensland, AU. 2 employees. Projects: Bowen Basin, Carpentaria Basin, Galilee Basin (CSG/conventional gas exploration); HyReward Project (strategic partnership); Sapphire 5L2 gas project; SMR development for data center applications.\n\n## Situational read\nThis is a strategic vehicle, not a junior explorer. Two employees on paper, but $230.46M raised across 10 rounds since the 1994 IPO, and a cap table that reads like the Australian energy transition itself: **Stanwell** (Queensland state-owned generator) since 2008, **Korean Gas** since 2009, **IFM Investors** (Australia's largest pension manager) since 2018, plus **KKR**, **Green Investment Group**, and **Temporis Capital** on a $124.77M debt tranche from Dec 2015. Chairman is **John Ellice-Flint**, former Santos CEO. CEO/MD John Phillips runs operations solo.\n\nThe story is a deliberate pivot. From 2007 through ~2022, BLU was a Queensland CSG explorer drilling the Bowen and Carpentaria basins. Stock has lost 96% over 15 years on that thesis — gas markets and CSG economics didn't deliver. From 2023 onward, the company has been repositioning around **data center power infrastructure**: gas-fired generation as bridge, SMRs as the long-term play. Bloomberg confirms a **$380M raise in April 2026 to build nukes for data centers**. October 2024 raised $45M from Axios-reported investors for \"underwater SMR\" development. The HyReward Project from 2023 connects this to hydrogen co-generation.\n\nThis is exactly the kind of company that has institutional pressure to deliver, board-level operational pedigree, and zero functional operating team to execute. The $380M April raise puts a clock on it.\n\n## Financials (USD, TTM ending Dec 31, 2025)\nMarket Cap **$10.79M** (AUD $16M, +28.54% YoY) — *triggers Phase 0 Gate 3 manual review (cap < $50M AUD, revenue < $10M USD)*\nEnterprise Value **$7.51M** | Diluted EV **$9.49M**\nTotal Revenue **$0** (still pre-revenue on the production side, despite 30+ years of exploration)\nTTM Operating Loss **-$0.92M** | EBITDA -$0.85M | Net Income -$0.87M\nTotal Assets **$52.51M** | Total Equity **$51.71M** | Total Debt **$42K** (effectively zero)\nCash **$3.33M** — short runway at current burn unless the April 2026 $380M raise has closed and cleared\nROIC TTM -1.9%, ROE TTM -1.8% (much less ugly than EFE/FZR profile)\nWACC 5.81%, Cost of Equity 5.77%, Cost of Debt 8.20%\nBook value supports the equity story: Total Equity ($51.7M) >> Market Cap ($10.8M). Trading at 0.21x book.\n5Y return -94%, 10Y -80%, 15Y -96% — pivot is recent, returns reflect the old thesis\n\n## Capital structure\n**$230.46M raised across 10 disclosed rounds since 1994 IPO.** Mostly equity via PIPEs to strategic and institutional investors. Notable rounds: Aug 2008 PIPE ($31.6M), Jan 2007 PIPE ($34.7M), May 2009 PIPE ($7.17M), Jul 2022 PIPE ($13.68M), and most recently a small Aug 2025 PIPE ($3.2M). The headline-grabbing $380M April 2026 raise (per Bloomberg) is not yet in PitchBook's deal log but is consistent with the data center / SMR pivot.\n\n**Dec 2015 Debt - General: $124.77M from Green Investment Group (UK), KKR, and Temporis Capital.** Active equity investors include IFM, Stanwell (QLD state generator), Korean Gas (KOGAS), Chimaera Capital, Mathews Capital, and Cornerstone Investments.\n\n## Recent activity (last 6 months)\n**The data center / SMR pivot is the dominant theme.** Apr 21, 2026 Bloomberg: $380M raise for data center nukes. Oct 30, 2025: Bloomberg + company release both flag the gas-then-nuclear data center plant plan. Sep 23, 2025: \"Infra Dig\" podcast appearance positioning BLU in the US nuclear scene. Earlier: Oct 2024 Axios scoop on $45M for underwater reactors. Sep 2023: HyReward strategic partnership (hydrogen). Sep 2023: Sapphire gas project updates (the legacy CSG asset).\n\n## Top contacts for outreach\n**Primary target:** **John Phillips** (CEO/MD, john.phillips@blueenergy.com.au, +61 7 3270 8800). He is the entire operating team. Pitch: you've got $380M of institutional capital, two employees, and a thesis that requires building gas-fired generation and ultimately commercial SMRs in Australia. That's the gap.\n\n**Board-level escalation if Phillips doesn't engage:** **John Ellice-Flint** (Chairman, former Santos CEO). Frame as institutional credibility on the execution side.\n\n## Why they'd buy\nBLU is the textbook \"ambition outrunning execution capability\" case. The cap table demands delivery — IFM, KKR, Korean Gas, and Queensland Stanwell don't write checks for press releases. The April 2026 $380M raise puts a 12-24 month clock on demonstrating real operational progress.\n\n**Tier: Watch / B-tier.** Real institutional scale-up problem with board-level decision makers. Worth a thoughtful first touch via the Chairman track if Phillips doesn't bite."
+}

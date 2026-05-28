@@ -1,0 +1,96 @@
+{
+  "snapshot_data": {
+    "ticker": "INR",
+    "company": "Ioneer Ltd",
+    "as_of": "2026-05-27",
+    "financials": {
+      "market_cap_usd_m": 293.44,
+      "market_cap_aud_m": 407.39,
+      "enterprise_value_usd_m": 275.91,
+      "diluted_market_cap_usd_m": 293.44,
+      "diluted_enterprise_value_usd_m": 280.80,
+      "stock_price_aud": 0.13,
+      "stock_price_aud_52w_high": 0.29,
+      "stock_price_aud_52w_low": 0.09,
+      "ttm_revenue_usd_m": 0.0,
+      "ttm_operating_loss_usd_m": -10.16,
+      "ttm_ebitda_normalized_usd_m": -9.85,
+      "ttm_net_income_normalized_usd_m": -9.52,
+      "ttm_net_income_analyst_normalized_usd_m": -6.73,
+      "cash_usd_m": 25.06,
+      "total_debt_usd_m": 0.37,
+      "total_assets_usd_m": 233.54,
+      "total_equity_usd_m": 230.30,
+      "working_capital_usd_m": 22.29,
+      "capitalized_exploration_assets_usd_m": 203.11,
+      "key_ratios": {
+        "debt_to_equity": 0.0001,
+        "ev_to_revenue": "n/a (pre-revenue)",
+        "wacc": 0.0799,
+        "cost_of_equity": 0.0801,
+        "cost_of_debt_after_tax": 0.002,
+        "esg_risk_rating_severe": 45.21
+      },
+      "total_returns": {"ytd": -0.22, "1yr": 0.19, "3yr": -0.56, "5yr": -0.59, "10yr": 21.33, "15yr": 1.26},
+      "construction_capex_signal": "Cash flow from investing -$35.4M FY24, -$13.8M FY25, -$10.3M TTM Mar 2026. Cash flow from financing +$25.5M FY24, +$10.2M FY25, +$64.9M TTM Mar 2026 reflects the Jan/Feb 2026 capital raises. Net change in cash: -$17.1M FY24, -$10.4M FY25, +$47.4M TTM. Construction-phase capital cycle is real and accelerating."
+    },
+    "capital_structure": {
+      "total_raised_usd_m": 434.39,
+      "deal_history_recent": [
+        {"date": "2026-02-05", "type": "PIPE", "amount_usd_m": 49.09, "raised_to_date_usd_m": 434.39, "purpose": "Accelerate Rhyolite Ridge development", "market_reaction": "Shares fell 24% on raise announcement"},
+        {"date": "2025-07-10", "type": "PIPE", "amount_usd_m": 18.63, "raised_to_date_usd_m": 385.30},
+        {"date": "2025-06-13", "type": "PIPE", "amount_usd_m": 16.00, "raised_to_date_usd_m": 366.68},
+        {"date": "2024-05-03", "type": "PIPE", "amount_usd_m": 25.00, "raised_to_date_usd_m": 350.68},
+        {"date": "2021-09-15", "type": "PIPE", "amount_usd_m": 70.00, "raised_to_date_usd_m": 325.68, "investors": ["Sibanye-Stillwater (new investor)"]},
+        {"date": "2021-03-10", "type": "PIPE", "amount_usd_m": 62.17, "raised_to_date_usd_m": 255.68, "investors": ["BNP Paribas"]},
+        {"date": "2019-11-22", "type": "PIPE", "amount_usd_m": 27.38, "raised_to_date_usd_m": 193.51, "investors": ["Centaurus Capital"]},
+        {"date": "2018-06-13", "type": "PIPE", "amount_usd_m": 40.10, "raised_to_date_usd_m": 166.13, "post_val_usd_m": 412.09},
+        {"date": "2017-09-28", "type": "PIPE", "amount_usd_m": 34.00, "raised_to_date_usd_m": 126.03, "investors": ["Lithium Investments"]}
+      ],
+      "active_investors": [
+        {"name": "Sibanye-Stillwater", "type": "Corporation", "holding": "Minority", "since": "Sep 2021", "context": "South African PGM major. Strategic lithium investment."},
+        {"name": "BNP Paribas", "type": "Investment Bank", "holding": "Minority", "since": "Mar 2021"},
+        {"name": "Centaurus Capital", "type": "Hedge Fund", "holding": "Minority", "since": "Nov 2019"},
+        {"name": "Lithium Investments", "type": "Corporation", "holding": "Minority", "since": "Sep 2017"}
+      ],
+      "lenders": [],
+      "ownership_status": "Publicly held, Acquirer, Publicly Listed",
+      "debt_profile": "Lease liabilities only ($373K, 100% leases, senior unsecured). No bank debt, no term loans, no bonds. Pre-construction balance sheet — project finance will need to be structured as construction commences.",
+      "service_providers_advisors": ["Ernst & Young Global (Auditor)", "Westpac Banking (General Banking)", "Canaccord Genuity Australia (Christian Calabrese, MD — 15 deals)", "Gibson, Dunn & Crutcher (Eric Scarazzo, Partner — 6 deals)", "Ashurst (Anton Harris — 21 deals)", "Stifel Financial (Matthew Gaasenbeek, Vice Chairman — 22 deals)"],
+      "shareholder_warning_flag": "Bank of New York Mellon REDUCED stake Feb 8, 2026 (shares fell 5%). Institutional confidence wobble during transition."
+    },
+    "recent_news": [
+      {"date": "2026-03-30", "headline": "US District Court Upholds Approval of Nevada Project; Shares +7%", "publisher": "MT Newswires", "topic": "Legal Win — Construction Cleared"},
+      {"date": "2026-02-08", "headline": "Bank of New York Mellon Reduces Stake; Shares Fall 5%", "publisher": "MT Newswires", "topic": "Institutional Holder Reduction"},
+      {"date": "2026-02-05", "headline": "ioneer receives $49.09M PIPE financing for Rhyolite Ridge acceleration", "publisher": "PitchBook Deal Record", "topic": "Construction Capital"},
+      {"date": "2026-01-29", "headline": "ioneer Secures $50 Million in Single-Tranche Placement; Shares Plunge 24%", "publisher": "MT Newswires", "topic": "Capital Raise — Hostile Market Reaction"},
+      {"date": "2025-12-12", "headline": "Lithium miner ioneer eyes bid for Rio Tinto's US boron unit", "publisher": "Australian Financial Review", "topic": "M&A Speculation"},
+      {"date": "2025-12-01", "headline": "Ioneer Ltd Announces Executive Changes, Effective 1 December 2025", "publisher": "Market Screener", "topic": "Executive Turnover"},
+      {"date": "2025-11-10", "headline": "ioneer appoints April Hashimoto as interim CFO; Shares Fall 3%", "publisher": "MT Newswires", "topic": "CFO Transition — Interim"},
+      {"date": "2025-11-06", "headline": "ioneer Says Inclusion of Boron in US Critical Minerals List 'Significant Win' for Nevada Lithium-Boron Project", "publisher": "MT Newswires", "topic": "Federal Policy Tailwind"},
+      {"date": "2025-10-24", "headline": "ioneer Shifts Financial Period to Calendar Year; Shares Tumble 3%", "publisher": "MT Newswires", "topic": "Governance Change"},
+      {"date": "2025-10-19", "headline": "ioneer Receives Approval to Construct US Project; Shares Fall 7%", "publisher": "MT Newswires", "topic": "Construction Approval"},
+      {"date": "2025-09-21", "headline": "ioneer CFO to Step Down", "publisher": "MT Newswires", "topic": "CFO Departure"}
+    ],
+    "management_contacts": [
+      {"name": "Bernard Rowe", "role": "Managing Director, CEO & Board Member", "email": "browe@ioneer.com", "phone": "+61 (0)2 9922 5800", "priority": "high", "compensation_2025_usd": 2630000, "compensation_2024_usd": 972580, "note": "MD compensation tripled in 2025 ($972K to $2.63M). Boards don't pay $2.63M to maintain status quo — they expect construction-phase execution. Pitch operator-to-builder: you've cleared the federal hurdles, but the team that got you here is not the team that builds it."},
+      {"name": "April Hashimoto", "role": "Chief Financial Officer, Finance (INTERIM as of Nov 2025)", "priority": "medium", "note": "Interim CFO since Nov 10, 2025. Permanent CFO search appears ongoing. Do NOT lead with finance-team operating model pitch until status confirmed."},
+      {"name": "Matt Weaver", "role": "Senior Vice President", "phone": "+61 (0)2 9922 5800", "priority": "high", "compensation_2025_usd": 1530000, "note": "SVP compensation $1.53M in 2025 (up from $813K in 2023). High-paid operational executive — likely operations or development portfolio."},
+      {"name": "James Calaway", "role": "Chairman & Board Member", "priority": "high", "note": "Chairman since Jan 2017. Self-representing on the board. Board-level escalation path if Rowe screens out."}
+    ],
+    "office": {"primary_address": "213 Miller Street, Level 16, Suite 16.01, North Sydney, NSW 2060, Australia", "primary_phone": "+61 (0)2 9922 5800", "alternate_us_office": "9460 Double R. Boulevard, Reno, NV 89521, USA", "primary_email": "info@ioneer.com"},
+    "tier_recommendation": {
+      "verdict": "A-tier / strong outreach target",
+      "rationale": "Fully institutionally-backed lithium-boron developer with $434M raised, US federal court approval (Mar 2026), boron added to US Critical Minerals List (Nov 2025). The execution clock just started. CFO transition (Sep 2025 departure, Nov 2025 interim, still unfilled) and executive reshuffling (Dec 2025) suggest the org is mid-restructure for the construction era. Market punished the Jan 2026 raise -24% in a day and -32.6% on the month — sell-side is signaling execution doubt. That's the gap.",
+      "pitch_anchor": "Construction-phase operating model design and execution governance. How does a 23-person explorer-developer scale into a 100+-person construction-phase operator without losing the institutional credibility that just bought them $49M of fresh equity at a deep discount?",
+      "risks_to_flag_jess": [
+        "Severe ESG risk score (45.21) — highest in the comps set. Lithium mining + Nevada water rights are politically loaded.",
+        "CFO instability is the most acute pain point but also the most sensitive. Do not lead outreach with finance team commentary until interim/permanent status confirmed.",
+        "Sibanye-Stillwater is on the cap table and likely has a board seat — pitch must complement, not compete with, strategic-investor governance.",
+        "Rio Tinto boron acquisition rumor (AFR Dec 12, 2025) is unconfirmed. If they pursue it, integration becomes a separate Phase 2 engagement.",
+        "Stock is down 22% YTD and -32.6% post the Jan raise. Tone the outreach accordingly — operator-to-operator, not we noticed you're struggling."
+      ]
+    }
+  },
+  "snapshot_markdown": "**Ioneer Ltd (ASX: INR)** — Lithium-Boron Mining Development. North Sydney, NSW with Reno, Nevada office. 23 employees. Founded 2001. Sole asset: **Rhyolite Ridge Lithium-Boron Project, Nevada, USA.** Construction approval received Oct 2025, US District Court upheld approval Mar 30, 2026. Boron added to US Critical Minerals List Nov 6, 2025.\n\n## Situational read\nThis is the cleanest construction-phase mining prospect we've seen. INR has done what most ASX-listed development-stage miners cannot: get a US federal lithium-boron project across the finish line of approval. They have $25M cash, $230M equity book, $434M of accumulated PIPE capital, and a cap table that includes **Sibanye-Stillwater** (PGM major), **BNP Paribas**, **Centaurus Capital**, and **Bank of New York Mellon** (though BNY just reduced position).\n\nBut the operating context is hostile. In 6 months: CFO departed (Sep 21, 2025), construction approval landed (Oct 19, market sold off 7%), governance changes (Oct 24, -3%), interim CFO without permanent backfill (Nov 10, -3%), executive reshuffling (Dec 1), and then a $50M January 2026 capital raise that the market punished -24% in a single session and -32.6% on the month. BNY Mellon reduced position Feb 8 (-5%). The Mar 30 court win bounced 7% but did not restore prior valuation.\n\nMD Bernard Rowe's compensation tripled in 2025 ($972K to $2.63M). SVP Matt Weaver's compensation nearly doubled ($813K to $1.53M). Boards do not pay those numbers to maintain status quo. The 23-person team that ran the permitting fight is not the team that runs a $400M+ construction project. **That is the gap. And it is open right now.**\n\n## Financials (USD, TTM ending Mar 2026)\nMarket Cap **$293.44M** (AUD $407.39M) | Enterprise Value **$275.91M**\nTotal Revenue **$0** (pre-revenue, construction-stage)\nTTM Operating Loss **-$10.16M** | EBITDA Normalized **-$9.85M**\nTotal Assets **$233.54M** (87% capitalized exploration) | Total Equity **$230.30M** | Total Debt **$373K** (lease only)\nCash **$25.06M** | Working Capital **$22.29M**\nStock A$0.13 (52w range $0.09-$0.29) | YTD -22% | 10Y total return +2,133%\nESG Risk: **Severe (45.21)** — highest in lithium comps set\n\n## Capital structure\n**$434.39M raised across 14 disclosed rounds.** Heavy institutional cap table. Key rounds: Feb 2026 PIPE $49.09M (Rhyolite Ridge acceleration, shares -24%), Jul/Jun 2025 PIPEs totaling $34.63M, Sep 2021 $70M led by Sibanye-Stillwater, Mar 2021 $62.17M led by BNP Paribas. Zero commercial debt — construction-phase project finance structure still to be built.\n\n**Warning flag:** Bank of New York Mellon reduced position Feb 8, 2026 (shares -5%). Institutional confidence wobble.\n\n## Recent activity (last 6 months)\nOct 19, 2025: Construction approval (BLM) — shares fell 7%. Nov 6: Boron added to US Critical Minerals List. Nov 10: Interim CFO (shares -3%). Dec 1: Executive changes. Dec 12: AFR reports Rio Tinto US boron unit acquisition rumor. Jan 29, 2026: $50M placement — shares plunged 24%. Feb 8: BNY Mellon reduces stake (-5%). Mar 30: US District Court upholds Nevada project (+7%).\n\n## Top contacts for outreach\n**Primary target: Bernard Rowe** (MD/CEO, browe@ioneer.com, +61 2 9922 5800). Compensation tripled in 2025. Pitch: \"You cleared the federal hurdles. The team that got you through permitting is not the team that runs the build.\"\n\n**Secondary: Matt Weaver** (SVP, $1.53M comp in 2025). Confirm portfolio via LinkedIn — if he runs Nevada operations, he is the implementation buyer.\n\n**Board escalation: James Calaway** (Chairman, since Jan 2017). Self-representing, holds institutional memory.\n\n**Do NOT lead with: April Hashimoto** (interim CFO). Finance function is sensitive — permanent search likely still active.\n\n## Why they'd buy\n23-person team, $434M raised, court-cleared construction mandate, and a CFO hole. New Delta entry points: construction-phase org design and hiring sequence; LTO posture for BLM monitoring + state water rights + DOE loan compliance; strategic-investor governance for Sibanye-Stillwater board cadence; M&A integration readiness if Rio Tinto boron acquisition proceeds; 2-year production roadmap working backward from first lithium-boron output.\n\n**Tier: A-tier.** Cleanest construction-phase development prospect in the funnel. First-touch to Bernard Rowe within 4-6 weeks while Jan-Feb 2026 dilution shock and Mar 30 court ruling are both fresh."
+}
