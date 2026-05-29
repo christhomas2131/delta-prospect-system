@@ -413,6 +413,7 @@ def list_prospects(
     watchlist: Optional[bool] = Query(None),
     australia_only: bool = Query(False),
     city: Optional[str] = Query(None, description="Comma-separated city names to filter"),
+    exclude_dq: bool = Query(False, description="Exclude disqualified and archived prospects"),
     sort_by: str = Query("prospect_score"),
     sort_dir: str = Query("desc"),
     limit: int = Query(50, ge=1, le=500),
@@ -456,6 +457,8 @@ def list_prospects(
                 where_params.extend([f"%{search}%", f"%{search}%"])
             if watchlist:
                 where_clauses.append("pm.is_watchlisted = TRUE")
+            if exclude_dq:
+                where_clauses.append("pm.status NOT IN ('disqualified', 'archived')")
 
             having_clauses = []
             having_params = []

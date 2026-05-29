@@ -492,7 +492,7 @@ export default function DeepIntelligence() {
   useEffect(() => {
     if (!id) {
       setTopLoading(true)
-      fetch('/api/prospects?limit=10&sort_by=prospect_score&sort_dir=desc')
+      fetch('/api/prospects?limit=10&sort_by=prospect_score&sort_dir=desc&exclude_dq=true')
         .then(r => r.json())
         .then(d => {
           setTopProspects(d.prospects || d.data || d || [])
