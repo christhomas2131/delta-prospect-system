@@ -45,6 +45,13 @@ DO $$ BEGIN
     END IF;
 END $$;
 
+-- Gate 2 migration: day_volume for zero-trade detection
+DO $$ BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'asx_listings') THEN
+        ALTER TABLE asx_listings ADD COLUMN IF NOT EXISTS day_volume INTEGER;
+    END IF;
+END $$;
+
 -- v2.1 migration: accessibility_score, size_of_prize, prize_breakdown
 DO $$ BEGIN
     IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'prospect_matrix') THEN
@@ -144,6 +151,7 @@ CREATE TABLE IF NOT EXISTS asx_listings (
     listing_date         DATE,
     market_cap_aud       BIGINT,          -- cents (avoids float drift)
     last_price_aud       INTEGER,         -- cents
+    day_volume           INTEGER,         -- shares traded last session (from ASX header API)
     website              TEXT,
     principal_activities TEXT,
     registered_address_raw TEXT,

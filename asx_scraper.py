@@ -396,6 +396,7 @@ def fetch_company_detail(client: httpx.Client, ticker: str) -> Optional[dict]:
             "principal_activities": about.get("description"),
             "market_cap_aud": int(float(header["marketCap"]) * 100) if header.get("marketCap") else None,
             "last_price_aud": int(float(header["priceLast"]) * 100) if header.get("priceLast") else None,
+            "day_volume": int(header["volume"]) if header.get("volume") is not None else None,
             "registered_address_raw": location["raw_address"],
             "registered_city": location["city"],
             "registered_state": location["state"],
@@ -534,6 +535,38 @@ def apply_gate1_dq(conn) -> int:
     return n
 
 
+def apply_gate2_dq(conn) -> int:
+    """Phase 0 Gate 2: auto-DQ prospects with zero trading volume and market cap < AUD $50M.
+
+    day_volume is the last-session share trade count from the ASX header API.
+    NULL rows are excluded — volume hasn't been fetched yet for that company.
+    Zero is only a valid signal on a trading day; the weekly scraper runs on
+    scheduled days so weekend false-positives are not a concern in practice.
+    Already-disqualified and archived rows are never touched.
+
+    Returns the number of newly DQ'd prospects.
+    """
+    with conn.cursor() as cur:
+        cur.execute("""
+            UPDATE prospect_matrix pm
+            SET
+                status    = 'disqualified',
+                dq_reason = 'Phase 0 Gate 2: zero trading volume + market cap AUD below $50M floor (auto-DQ)'
+            FROM asx_listings l
+            WHERE l.id = pm.listing_id
+              AND l.day_volume = 0
+              AND l.market_cap_aud > 0
+              AND l.market_cap_aud < 5000000000
+              AND l.is_active = TRUE
+              AND pm.status NOT IN ('disqualified', 'archived')
+        """)
+        n = cur.rowcount
+        conn.commit()
+    if n:
+        logger.info(f"Phase 0 Gate 2: auto-DQ'd {n} prospect(s) (zero volume + cap < AUD $50M)")
+    return n
+
+
 def update_company_detail(conn, ticker: str, detail: dict, triggered_by: str) -> None:
     with conn.cursor() as cur:
         cur.execute("""
@@ -543,6 +576,7 @@ def update_company_detail(conn, ticker: str, detail: dict, triggered_by: str) ->
                 principal_activities=COALESCE(%s, principal_activities),
                 market_cap_aud=COALESCE(%s, market_cap_aud),
                 last_price_aud=COALESCE(%s, last_price_aud),
+                day_volume=%s,
                 registered_address_raw=%s,
                 registered_city=%s,
                 registered_state=%s,
@@ -557,6 +591,7 @@ def update_company_detail(conn, ticker: str, detail: dict, triggered_by: str) ->
             detail["principal_activities"],
             detail["market_cap_aud"],
             detail["last_price_aud"],
+            detail.get("day_volume"),
             detail["registered_address_raw"],
             detail["registered_city"],
             detail["registered_state"],
@@ -609,6 +644,7 @@ def refresh_target_company_details(
                     registered_city IS NULL
                  OR registered_state IS NULL
                  OR location_source IS NULL
+                 OR day_volume IS NULL
               )
             """
         cur.execute(f"""
@@ -680,6 +716,7 @@ def run_full_refresh(triggered_by: str = "system"):
         backfill_prospect_matrix(conn)
         refresh_target_company_details(conn, only_missing_location=True, triggered_by=triggered_by)
         gate1_dq_count = apply_gate1_dq(conn)
+        gate2_dq_count = apply_gate2_dq(conn)
         rid = record_refresh(conn, "weekly", stats, triggered_by)
 
         logger.info("=" * 60)
@@ -691,6 +728,7 @@ def run_full_refresh(triggered_by: str = "system"):
         logger.info(f"  Delisted:     {stats.delisted_count:,}")
         logger.info(f"  Target sect:  {stats.target_sector_count:,}")
         logger.info(f"  Gate 1 DQ'd:  {gate1_dq_count:,}")
+        logger.info(f"  Gate 2 DQ'd:  {gate2_dq_count:,}")
         logger.info("=" * 60)
         return stats
     finally:
@@ -726,9 +764,10 @@ def run_single_refresh(ticker: str, triggered_by: str = "manual"):
 # CLI
 # ---------------------------------------------------------------------------
 
-def dry_run_gate1(conn) -> dict:
-    """Report what Gate 1 would DQ without making any changes."""
+def dry_run_gates(conn) -> dict:
+    """Report what Gates 1 and 2 would DQ without making any changes."""
     with conn.cursor() as cur:
+        # Gate 1 candidates
         cur.execute("""
             SELECT l.ticker, l.company_name,
                    ROUND(l.market_cap_aud / 100.0 / 1000000, 3) AS market_cap_aud_m,
@@ -741,25 +780,53 @@ def dry_run_gate1(conn) -> dict:
               AND pm.status NOT IN ('disqualified', 'archived')
             ORDER BY l.market_cap_aud ASC
         """)
-        would_dq = cur.fetchall()
+        gate1_would_dq = cur.fetchall()
+
+        # Gate 2 candidates
+        cur.execute("""
+            SELECT l.ticker, l.company_name,
+                   ROUND(l.market_cap_aud / 100.0 / 1000000, 2) AS market_cap_aud_m,
+                   l.day_volume,
+                   pm.status
+            FROM prospect_matrix pm
+            JOIN asx_listings l ON l.id = pm.listing_id
+            WHERE l.day_volume = 0
+              AND l.market_cap_aud > 0
+              AND l.market_cap_aud < 5000000000
+              AND l.is_active = TRUE
+              AND pm.status NOT IN ('disqualified', 'archived')
+            ORDER BY l.market_cap_aud ASC
+        """)
+        gate2_would_dq = cur.fetchall()
+
         cur.execute("""
             SELECT COUNT(*) FROM prospect_matrix pm
             JOIN asx_listings l ON l.id = pm.listing_id
             WHERE l.is_active = TRUE AND pm.status NOT IN ('disqualified','archived')
         """)
         active_count = cur.fetchone()[0]
+
         cur.execute("""
-            SELECT COUNT(*) FROM prospect_matrix pm
-            JOIN asx_listings l ON l.id = pm.listing_id
-            WHERE l.market_cap_aud = 0
-              AND l.is_active = TRUE
-              AND pm.status NOT IN ('disqualified','archived')
+            SELECT COUNT(*) FROM asx_listings
+            WHERE is_active = TRUE AND is_target_sector = TRUE AND day_volume IS NULL
         """)
-        stale_zero_count = cur.fetchone()[0]
+        null_volume_count = cur.fetchone()[0]
+
     return {
-        "would_dq": would_dq,
+        "gate1_would_dq": gate1_would_dq,
+        "gate2_would_dq": gate2_would_dq,
         "active_prospects": active_count,
-        "stale_zero_market_cap": stale_zero_count,
+        "null_volume_count": null_volume_count,
+    }
+
+
+# Keep old name as alias for backwards compatibility with tests
+def dry_run_gate1(conn) -> dict:
+    result = dry_run_gates(conn)
+    return {
+        "would_dq": result["gate1_would_dq"],
+        "active_prospects": result["active_prospects"],
+        "stale_zero_market_cap": result["null_volume_count"],
     }
 
 
@@ -769,8 +836,8 @@ def main():
     p.add_argument("--ticker", type=str, help="Required for --mode single")
     p.add_argument("--triggered-by", type=str, default="manual")
     p.add_argument("--dry-run", action="store_true",
-                   help="For --mode full: fetch live data but do not write to DB. "
-                        "Reports what Gate 1 would auto-DQ.")
+                   help="For --mode full: do not write to DB. "
+                        "Reports what Gates 1 and 2 would auto-DQ.")
     args = p.parse_args()
 
     if args.mode == "single" and not args.ticker:
@@ -782,22 +849,34 @@ def main():
         logger.info("DRY-RUN MODE — no data will be written")
         conn = get_conn()
         try:
-            result = dry_run_gate1(conn)
+            result = dry_run_gates(conn)
         finally:
             conn.close()
         print(f"\n{'='*60}")
-        print("GATE 1 DRY-RUN REPORT")
+        print("PHASE 0 GATES DRY-RUN REPORT")
         print(f"{'='*60}")
         print(f"Active prospects (not DQ/archived): {result['active_prospects']}")
-        print(f"Stale zero-market-cap rows (skipped): {result['stale_zero_market_cap']}")
-        print(f"Would be auto-DQ'd by Gate 1: {len(result['would_dq'])}")
-        if result["would_dq"]:
-            print(f"\n{'TICKER':<8} {'MARKET CAP AUD':>16}  {'CURRENT STATUS':<20}  COMPANY")
-            print("-" * 80)
-            for row in result["would_dq"]:
-                print(f"  {row[0]:<6} {str(row[2]) + 'M':>15}  {row[3]:<20}  {row[1]}")
+        print(f"Target-sector companies with no volume data yet: {result['null_volume_count']}")
+
+        print(f"\n--- GATE 1 (market cap < AUD $5M) ---")
+        print(f"Would be auto-DQ'd: {len(result['gate1_would_dq'])}")
+        if result["gate1_would_dq"]:
+            print(f"\n  {'TICKER':<8} {'CAP AUD':>10}  {'STATUS':<20}  COMPANY")
+            print("  " + "-" * 70)
+            for row in result["gate1_would_dq"]:
+                print(f"  {row[0]:<8} {str(row[2])+'M':>10}  {row[3]:<20}  {row[1]}")
         else:
-            print("\nNo prospects would be DQ'd — all eligible companies already handled.")
+            print("  None — all eligible companies already handled.")
+
+        print(f"\n--- GATE 2 (volume=0 + market cap < AUD $50M) ---")
+        print(f"Would be auto-DQ'd: {len(result['gate2_would_dq'])}")
+        if result["gate2_would_dq"]:
+            print(f"\n  {'TICKER':<8} {'CAP AUD':>10}  {'VOLUME':>8}  {'STATUS':<20}  COMPANY")
+            print("  " + "-" * 78)
+            for row in result["gate2_would_dq"]:
+                print(f"  {row[0]:<8} {str(row[2])+'M':>10}  {row[3]:>8}  {row[4]:<20}  {row[1]}")
+        else:
+            print("  None — no zero-volume prospects in the $5M-$50M range.")
         print(f"{'='*60}\n")
         return
 
