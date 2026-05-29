@@ -1,6 +1,21 @@
 # Phase 0 Auto-DQ Rollback Instructions
 
-Created: 2026-05-27. Backup timestamp: 20260527-215836.
+Created: 2026-05-27. Last updated: 2026-05-28 (Gate 2 live).
+
+## Baseline snapshots
+
+| Checkpoint | SQL backup | CSV snapshot | State |
+|---|---|---|---|
+| Pre-Phase 0 | `prospect_matrix_pre_phase0_20260527-215836.sql` | `...csv` | 998 rows, 0 DQ'd |
+| Post-Gate-1 | — | — | 46 DQ'd, 952 active |
+| Pre-Gate-2 | `prospect_matrix_pre_gate2_20260528-213939.sql` | — | 46 DQ'd, 952 active |
+| **Post-Gate-2 (current)** | `prospect_matrix_post_gate2_20260528-222304.sql` | `prospect_matrix_status_post_gate2_20260528-222304.csv` | **142 DQ'd, 854 active** |
+
+To roll back to post-Gate-2 baseline (e.g. if a future scraper run goes wrong):
+```bash
+psql -U delta -h localhost -d delta_prospect -c "DROP TABLE prospect_matrix CASCADE;"
+psql -U delta -h localhost -d delta_prospect -f backups/prospect_matrix_post_gate2_20260528-222304.sql
+```
 
 If Phase 0 work needs to be reverted, follow these steps.
 
