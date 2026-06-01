@@ -1,128 +1,171 @@
-# CLAUDE.md — Delta Prospect System v2.0
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## What This Project Is
 
-An automated prospect intelligence platform for a consultancy selling operational expertise to ASX-listed heavy industry, energy, and mining companies. The system:
+Automated prospect intelligence platform for a consultancy (New Delta) that sells operational expertise to ASX-listed heavy industry companies. Ingests ~2400 ASX companies, filters to 4 target sectors, enriches with pressure signal analysis, scores and ranks prospects, and serves a React dashboard.
 
-1. Ingests ALL companies listed on the Australian Securities Exchange (~2400)
-2. Filters to target sectors: Energy, Materials (metals/mining), Capital Goods (heavy industrials), Utilities
-3. Enriches each company with pressure signal analysis using a rule-based keyword engine (no API costs)
-4. Scores and ranks prospects in a searchable dashboard (the "Prospect Matrix")
-5. Serves everything through a FastAPI REST API and React frontend
+Target sectors: **Energy, Materials (metals/mining), Capital Goods (industrials), Utilities**
 
-## Project Files
+---
 
-| File | What It Does |
-|---|---|
-| `schema.sql` | PostgreSQL schema: 6 tables, 4 enums, triggers, scoring function, views, GICS seed data |
-| `asx_scraper.py` | Fetches ASX CSV feed (~2400 listings), maps GICS sectors, filters targets, upserts to DB |
-| `enrichment_agent.py` | Rule-based: fetches ASX announcements, pattern-matches 100+ keyword rules across 7 pressure categories, generates profiles, calculates scores. FREE, no API key needed. |
-| `api.py` | FastAPI REST backend: filtering, sorting, pagination, fuzzy search, sector stats, triggers |
-| `requirements.txt` | Python dependencies |
-| `.env.example` | Environment config template |
+## Commands
+
+### Backend
+
+```bash
+# Activate venv first (Windows)
+venv\Scripts\activate
+
+# Run API (dev)
+uvicorn api:app --host 0.0.0.0 --port 8000 --reload
+
+# ASX scraper
+python asx_scraper.py --mode full                        # Full ingest + Phase 0 DQ gates
+python asx_scraper.py --mode full --dry-run              # Preview Gate 1 + Gate 2 without writing
+python asx_scraper.py --mode single --ticker BHP
+
+# Enrichment agent (rule-based, free)
+python enrichment_agent.py --mode batch                  # All unscreened/qualified prospects
+python enrichment_agent.py --mode single --ticker BHP
+python enrichment_agent.py --mode rescore                # Recalculate scores only
+```
+
+### Frontend
+
+```bash
+cd frontend
+npm run dev        # Vite dev server → localhost:5173
+npm run build      # Production build → dist/
+npm run lint
+```
+
+### Tests
+
+Integration tests require local PostgreSQL with dev credentials (`delta` / `delta_dev` / `delta_prospect`).
+
+```bash
+pytest tests/ -v                              # All tests
+pytest tests/test_phase0_gate1.py -v         # Gate 1 (market cap threshold)
+pytest tests/test_phase0_gate2.py -v         # Gate 2 (zero volume)
+pytest tests/test_leaderboard_dq_filter.py -v # Leaderboard DQ filter (requires API on :8000)
+pytest tests/test_snapshot.py -v             # Snapshot API roundtrip (mocked DB, no PG needed)
+```
+
+Set env vars for integration tests: `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD` (defaults match dev config).
+
+### Database
+
+```bash
+# Start PostgreSQL (Docker)
+docker run -d --name delta-pg \
+  -e POSTGRES_USER=delta -e POSTGRES_PASSWORD=delta_dev \
+  -e POSTGRES_DB=delta_prospect -p 5432:5432 postgres:15
+
+# Apply schema (safe to re-run — all migrations use IF NOT EXISTS / DO $$ blocks)
+psql -U delta -d delta_prospect -f schema.sql
+```
+
+---
 
 ## Architecture
 
 ```
-ASX CSV (asx.com.au/asx/research/ASXListedCompanies.csv)
-    |
-    v
-asx_scraper.py --> PostgreSQL (asx_listings, ~2400 rows)
-    |                    |
-    | (filter)           |
-    v                    |
-prospect_matrix          |
-(target sectors,         |
- ~800-1000 companies)    |
-    |                    |
-    v                    |
-enrichment_agent.py ---> ASX Announcements API (free)
-    | (keyword patterns)       |
-    | (no API key needed)      |
-    v                    |
-pressure_signals         |
-    |                    |
-    v                    |
-api.py (FastAPI) ------> React Dashboard
+ASX CSV + ASX JSON API (Markit Digital)
+    ↓
+asx_scraper.py
+  ├─ Parse ~2400 listings → asx_listings table
+  ├─ Create prospect_matrix rows for target sectors
+  ├─ fetch_company_detail(): market_cap_aud, last_price_aud, day_volume, location
+  ├─ apply_gate1_dq(): cap > 0 AND cap < AUD $5M → disqualified
+  └─ apply_gate2_dq(): volume = 0 AND 0 < cap < AUD $50M → disqualified
+    ↓
+enrichment_agent.py
+  ├─ Fetch ASX announcements (2s rate limit between companies)
+  ├─ Regex pattern-match against 100+ rules across 6 pillars
+  ├─ Calculate prospect_score = Σ(strength_weight × pillar_weight) × likelihood/10
+  └─ Write to pressure_signals + update prospect_matrix
+    ↓
+api.py (FastAPI + APScheduler)
+  ├─ REST API under /api/
+  ├─ ThreadedConnectionPool for concurrent DB access
+  ├─ Background tasks for refresh/enrich jobs
+  ├─ Serves frontend static files from frontend/dist/
+  └─ Seeds pitchbook_snapshots from snapshots/*.json at startup
+    ↓
+Frontend (React + Vite + Tailwind, React Router)
+  ├─ /            → Dashboard
+  ├─ /leads       → LeadMatrix (filterable prospect table)
+  └─ /deep-intelligence/:id → DeepIntelligence (company detail + signals + snapshot)
 ```
 
-## Enrichment Engine (Rule-Based, $0 Cost)
+---
 
-The enrichment agent scans ASX announcement titles against 100+ regex patterns organized by pressure type. Each pattern has an assigned strength (strong/moderate/weak) and a summary template.
+## Key Patterns and Constraints
 
-Pressure types: operational, cost, safety, governance, environmental, market, workforce
+### Money is stored in cents
+`market_cap_aud` and `last_price_aud` are BIGINT in cents (not dollars). Gate 1 threshold = 500,000,000 (AUD $5M). Gate 2 threshold = 5,000,000,000 (AUD $50M).
 
-Examples of what it catches:
-- "Production downgrade" → operational/strong
-- "CEO resignation" → governance/strong
-- "Capital raising" → cost/strong
-- "Quarterly activities report" → operational/moderate
-- "Sustainability report" → environmental/weak
+### Phase 0 auto-DQ gates
+Both gates live in `asx_scraper.py` and run in sequence at the end of `run_full_refresh()`:
+- **Gate 1**: Skips `market_cap_aud = 0` rows (stale/unrefreshed — not genuinely zero-cap).
+- **Gate 2**: Skips `day_volume IS NULL` rows (not yet fetched). Only fires on confirmed zero.
+- Neither gate overwrites already-`disqualified` or `archived` rows.
+- `dq_reason` TEXT column on `prospect_matrix` stores the human-readable reason.
 
-Strategic profiles are generated per sector with likelihood scores based on signal volume and strength.
+### Enrichment deduplication
+`pressure_signals` has a unique constraint on `(prospect_id, pressure_type, source_url)`. Re-enriching a company won't duplicate signals from the same announcement.
 
-## Database Tables
+### Status transitions
+`save_results()` in `enrichment_agent.py` only advances status from `unscreened/qualified → enriched`. It will **not** flip a `disqualified` row back to `enriched`.
 
-- **asx_listings**: All ASX companies. Key columns: ticker, company_name, gics_industry_group, gics_sector, is_target_sector, market_cap_aud (cents), is_active
-- **prospect_matrix**: Scored working set. Key columns: listing_id (FK), status (enum), strategic_direction, primary_tailwind, primary_headwind, likelihood_score (1-10), prospect_score
-- **pressure_signals**: Intelligence per company. Key columns: prospect_id (FK), pressure_type (enum), strength (enum), summary, confidence_score, source_url
-- **enrichment_log**: Audit trail
-- **gics_sector_map**: Industry group → sector mapping with target flags
-- **refresh_runs**: Refresh cycle tracking
+### Snapshot seeding
+At API startup, `api.py` reads all `snapshots/*_snapshot.json` files and upserts them into `pitchbook_snapshots` by ticker. Add a new `<ticker>_snapshot.json` to the `snapshots/` dir to persist a snapshot across deploys.
 
-## Target Sectors
+### DQ'd prospects in the UI
+- **Deep Intelligence leaderboard** (`/api/prospects?exclude_dq=true`): DQ'd rows excluded.
+- **Lead Matrix**: DQ'd rows visible with DISQUALIFIED badge — intentional, users can filter.
+- **Company detail page** (`DeepIntelligence.jsx`): Shows red hazard-stripe DQ banner above the header when `status = 'disqualified'`.
 
-| Industry Group | Sector | Target |
-|---|---|---|
-| Energy | Energy | Yes |
-| Materials | Materials | Yes |
-| Capital Goods | Industrials | Yes |
-| Utilities | Utilities | Yes |
-| Everything else | Various | No |
+### ASX API limits
+The Markit Digital JSON API is undocumented and rate-limited. The scraper uses 0.35s delay between detail requests. The ASX announcements API (used by `enrichment_agent.py`) returns max 5 announcements regardless of pagination params — this is a hard limit of the endpoint, not a bug.
 
-## Scoring
+### Frontend routing
+`App.jsx` has redirect routes: `/prospects → /leads`, `/prospects/:id → /deep-intelligence`. `ProspectDetail.jsx` exists but is **not used** — all detail traffic goes through `DeepIntelligence.jsx`.
 
-```
-prospect_score = signal_score * (likelihood_score / 10)
-signal_score = SUM(strength_weight * type_weight)
-  strength: strong=3, moderate=2, weak=1
-  type: operational=1.5, cost=1.3, safety=1.2, environmental=1.1, governance=1.0, workforce=1.0, market=0.8
-```
+---
 
-Implemented as PostgreSQL function `calculate_prospect_score(UUID)`.
+## Python Module Guide
 
-## API Endpoints
+| Module | Purpose |
+|---|---|
+| `api.py` | FastAPI app, all HTTP endpoints, APScheduler cron, snapshot seeding |
+| `asx_scraper.py` | CSV ingest, company detail fetch, Phase 0 DQ gates |
+| `enrichment_agent.py` | Rule-based signal detection, scoring, batch/single enrichment |
+| `asx_browser.py` | ASX announcements fetcher (wraps the Markit API with retries) |
+| `deep_analysis.py` | Claude API enrichment v1 — headline-based analysis |
+| `v3_intelligence.py` | Claude API enrichment v2 — full document analysis via Firecrawl |
+| `prize_calculator.py` | Size-of-prize estimation logic |
+| `schema.sql` | Full DB schema + all migrations (safe to re-run) |
 
-| Method | Path | Purpose |
-|---|---|---|
-| GET | /api/prospects | List with filters, sort, pagination |
-| GET | /api/prospects/{id} | Detail with signals |
-| PATCH | /api/prospects/{id} | Update status/notes |
-| GET | /api/sectors | Sector breakdown |
-| GET | /api/stats | Dashboard stats |
-| POST | /api/refresh | Trigger ASX refresh |
-| POST | /api/enrich/{ticker} | Trigger single enrichment |
-| GET | /api/search | Fuzzy search |
-| GET | /api/health | Health check |
+---
 
 ## Environment Variables
 
 ```
-DB_HOST=localhost
-DB_PORT=5432
-DB_NAME=delta_prospect
-DB_USER=delta
-DB_PASSWORD=delta_dev
+DB_HOST / DB_PORT / DB_NAME / DB_USER / DB_PASSWORD   # PostgreSQL connection
+ANTHROPIC_API_KEY   # Required only for deep analysis (not rule-based enrichment)
+FIRECRAWL_API_KEY   # Required only for v3 full-document intelligence
+DATABASE_URL        # Overrides individual DB_* vars if set (Railway uses this)
+CRON_SECRET         # Protects POST /api/cron/enrich-all
+AUTH_USER / AUTH_PASSWORD  # Basic auth (optional — disables if not set)
 ```
 
-No API keys required. Everything runs locally for free.
+---
 
-## Important Notes for Claude Code
+## Deployment (Railway)
 
-- ASX CSV URL: https://www.asx.com.au/asx/research/ASXListedCompanies.csv (two-row header, data on row 3)
-- ASX JSON announcements API is undocumented, may have rate limits. We use 1.5s delay between calls.
-- All money stored in CENTS (integer) to avoid float issues
-- The operator is a novice coder. Explain each step simply. Fix errors inline.
-- Use Docker for PostgreSQL: `docker run -d --name delta-pg -e POSTGRES_USER=delta -e POSTGRES_PASSWORD=delta_dev -e POSTGRES_DB=delta_prospect -p 5432:5432 postgres:15`
-- The enrichment batch for ~800 companies takes ~20 minutes (rate-limited ASX API calls)
-- The .env file should NEVER be committed to git
+Railway pulls from `master`. The Dockerfile builds the frontend and copies everything to the image. `schema.sql` is in the image but **not executed automatically** — schema migrations must be run manually against the Railway PostgreSQL via `psql $DATABASE_URL -f schema.sql` or the Railway dashboard query console.
+
+See `PHASE0_ROLLBACK.md` for rollback procedures and DB backup file locations.
