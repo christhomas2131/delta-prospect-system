@@ -1888,9 +1888,45 @@ def _auto_deep_analysis(conn):
     logger.info("Auto deep analysis complete")
 
 
-def _run_batch_with_progress():
+def _build_prospect_filters(sector=None, lead_tier=None, watchlist=None,
+                            has_signals=None, min_prize=None, min_score=None,
+                            australia_only=False, city=None, exclude_dq=False):
+    """Build WHERE clauses + params for prospect filtering. Shared by list + batch endpoints."""
+    where_clauses = ["l.is_active = TRUE", "l.is_target_sector = TRUE"]
+    where_params = []
+    if sector:
+        where_clauses.append("l.gics_sector = %s")
+        where_params.append(sector)
+    if lead_tier:
+        where_clauses.append("pm.lead_tier = %s")
+        where_params.append(lead_tier)
+    if min_score is not None:
+        where_clauses.append("pm.prospect_score >= %s")
+        where_params.append(min_score)
+    if min_prize is not None:
+        where_clauses.append("pm.size_of_prize >= %s")
+        where_params.append(min_prize)
+    if australia_only:
+        where_clauses.append("pm.in_australia = TRUE")
+    if city:
+        cities = [c.strip() for c in city.split(",") if c.strip()]
+        if cities:
+            placeholders = ",".join(["%s"] * len(cities))
+            where_clauses.append(f"pm.registered_city IN ({placeholders})")
+            where_params.extend(cities)
+    if watchlist:
+        where_clauses.append("pm.is_watchlisted = TRUE")
+    if exclude_dq:
+        where_clauses.append("pm.status NOT IN ('disqualified', 'archived')")
+    having_sql = ""
+    if has_signals:
+        having_sql = "HAVING COUNT(ps.id) > 0"
+    return " AND ".join(where_clauses), where_params, having_sql
+
+
+def _run_batch_with_progress(filters=None):
     """Wrapper around enrichment run_batch that tracks progress.
-    Processes ALL target sector companies, not just unscreened/qualified."""
+    Processes ALL target sector companies, or a filtered subset if filters are provided."""
     from enrichment_agent import get_conn as enrich_conn, detect_signals, generate_profile, save_results
     from asx_browser import ASXFetcher
     import time as _time
@@ -1905,16 +1941,20 @@ def _run_batch_with_progress():
 
     conn = enrich_conn()
     try:
-        # Fetch ALL prospects (not just unscreened) so re-enrichment works
+        where_sql, where_params, having_sql = _build_prospect_filters(**(filters or {}))
+        query = f"""
+            SELECT pm.id prospect_id, pm.status, l.id listing_id,
+                   l.ticker, l.company_name, l.gics_sector,
+                   l.principal_activities
+            FROM prospect_matrix pm JOIN asx_listings l ON l.id=pm.listing_id
+            LEFT JOIN pressure_signals ps ON ps.prospect_id = pm.id
+            WHERE {where_sql}
+            GROUP BY pm.id, l.id, l.ticker, l.company_name, l.gics_sector, l.principal_activities, l.market_cap_aud
+            {having_sql}
+            ORDER BY l.market_cap_aud DESC NULLS LAST
+        """
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute("""
-                SELECT pm.id prospect_id, pm.status, l.id listing_id,
-                       l.ticker, l.company_name, l.gics_sector,
-                       l.principal_activities
-                FROM prospect_matrix pm JOIN asx_listings l ON l.id=pm.listing_id
-                WHERE l.is_active=TRUE AND l.is_target_sector=TRUE
-                ORDER BY l.market_cap_aud DESC NULLS LAST
-            """)
+            cur.execute(query, where_params)
             prospects = cur.fetchall()
         _enrich_progress["total"] = len(prospects)
         logger.info(f"Batch enrichment started: {len(prospects)} prospects")
@@ -1950,29 +1990,58 @@ def _run_batch_with_progress():
 
 
 @app.post("/api/enrich/batch")
-def trigger_batch_enrichment(background_tasks: BackgroundTasks):
-    """Trigger batch enrichment for ALL target sector prospects (runs in background)."""
+def trigger_batch_enrichment(
+    background_tasks: BackgroundTasks,
+    sector: Optional[str] = Query(None),
+    lead_tier: Optional[str] = Query(None),
+    watchlist: Optional[bool] = Query(None),
+    has_signals: Optional[bool] = Query(None),
+    min_prize: Optional[int] = Query(None),
+    min_score: Optional[float] = Query(None),
+    australia_only: bool = Query(False),
+    city: Optional[str] = Query(None),
+    exclude_dq: bool = Query(False),
+):
+    """Trigger batch enrichment for target sector prospects (runs in background).
+    Accepts the same filters as /api/prospects so you can enrich a focused subset."""
     if _enrich_progress["running"]:
         return {"message": "Enrichment already running", "count": _enrich_progress["total"], "running": True}
 
-    # Count all target sector prospects
+    filters = {k: v for k, v in dict(
+        sector=sector, lead_tier=lead_tier, watchlist=watchlist,
+        has_signals=has_signals, min_prize=min_prize, min_score=min_score,
+        australia_only=australia_only, city=city, exclude_dq=exclude_dq,
+    ).items() if v not in (None, False, 0)}
+
+    where_sql, where_params, having_sql = _build_prospect_filters(**filters)
     conn = get_conn()
     try:
         with conn.cursor() as cur:
-            cur.execute(
-                "SELECT COUNT(*) FROM prospect_matrix pm "
-                "JOIN asx_listings l ON l.id = pm.listing_id "
-                "WHERE l.is_active = TRUE AND l.is_target_sector = TRUE"
-            )
+            if having_sql:
+                cur.execute(
+                    f"SELECT COUNT(*) FROM ("
+                    f"  SELECT pm.id FROM prospect_matrix pm JOIN asx_listings l ON l.id=pm.listing_id "
+                    f"  LEFT JOIN pressure_signals ps ON ps.prospect_id = pm.id "
+                    f"  WHERE {where_sql} GROUP BY pm.id {having_sql}"
+                    f") sub",
+                    where_params,
+                )
+            else:
+                cur.execute(
+                    f"SELECT COUNT(*) FROM prospect_matrix pm JOIN asx_listings l ON l.id=pm.listing_id "
+                    f"WHERE {where_sql}",
+                    where_params,
+                )
             count = cur.fetchone()[0]
     finally:
         put_conn(conn)
 
     if count == 0:
-        return {"message": "No target sector prospects to enrich", "count": 0}
+        return {"message": "No prospects match these filters", "count": 0}
 
-    background_tasks.add_task(_run_batch_with_progress)
-    return {"message": f"Enrichment started for {count} companies", "count": count}
+    background_tasks.add_task(_run_batch_with_progress, filters)
+    label = "filtered prospects" if filters else "companies"
+    return {"message": f"Enrichment started for {count} {label}", "count": count}
 
 
 @app.get("/api/enrich/status")

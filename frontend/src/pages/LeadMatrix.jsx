@@ -277,6 +277,25 @@ export default function LeadMatrix({ watchlistOnly = false }) {
     return `/api/prospects/export/csv?${p}`
   }
 
+  const getEnrichParams = () => {
+    const p = new URLSearchParams()
+    if (sector) p.set('sector', sector)
+    if (hasSignals) p.set('has_signals', 'true')
+    if (wlFilter || watchlistOnly) p.set('watchlist', 'true')
+    if (hotFilter) {
+      p.set('lead_tier', 'hot')
+    } else if (warmFilter) {
+      p.set('lead_tier', 'warm')
+    } else if (leadTier) {
+      p.set('lead_tier', leadTier)
+    }
+    if (prize10mFilter) p.set('min_prize', '10000000')
+    else if (prize1mFilter) p.set('min_prize', '1000000')
+    if (australiaOnly) p.set('australia_only', 'true')
+    if (selectedCities.length > 0) p.set('city', selectedCities.join(','))
+    return p
+  }
+
   const clearAll = () => {
     setSearch(''); setSector(''); setLeadTier('')
     setHasSignals(false); setWlFilter(false)
@@ -345,7 +364,7 @@ export default function LeadMatrix({ watchlistOnly = false }) {
               onClick={async () => {
                 setEnriching(true)
                 try {
-                  const r = await fetch('/api/enrich/batch', { method: 'POST' })
+                  const r = await fetch(`/api/enrich/batch?${getEnrichParams()}`, { method: 'POST' })
                   const d = await r.json()
                   setToast({ ok: true, msg: d.message || 'Batch enrichment started' })
                   setTimeout(() => setToast(null), 5000)
@@ -366,7 +385,7 @@ export default function LeadMatrix({ watchlistOnly = false }) {
                 cursor: enriching ? 'not-allowed' : 'pointer',
               }}
             >
-              {enriching && enrichProgress ? `ENRICHING ${enrichProgress.current}/${enrichProgress.total}` : enriching ? 'ENRICHING...' : 'ENRICH ALL'}
+              {enriching && enrichProgress ? `ENRICHING ${enrichProgress.current}/${enrichProgress.total}` : enriching ? 'ENRICHING...' : hasFilters ? 'ENRICH FILTERED' : watchlistOnly ? 'ENRICH WATCHLIST' : 'ENRICH ALL'}
             </button>
             <a
               href={getExportUrl()}

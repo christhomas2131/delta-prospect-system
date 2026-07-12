@@ -163,6 +163,21 @@ export default function Dashboard() {
     }
   }
 
+  const handleEnrichTopLeads = async () => {
+    setEnriching(true)
+    try {
+      const r = await fetch('/api/enrich/batch?min_score=8&exclude_dq=true', { method: 'POST' })
+      const d = await r.json()
+      setToast({ ok: true, msg: d.message || 'Top leads enrichment started' })
+      setTimeout(() => setToast(null), 5000)
+      startEnrichPolling()
+    } catch {
+      setToast({ ok: false, msg: 'Enrichment failed - check API' })
+      setEnriching(false)
+      setTimeout(() => setToast(null), 5000)
+    }
+  }
+
   if (error && !stats) {
     return (
       <div className="p-6">
@@ -203,6 +218,21 @@ export default function Dashboard() {
               Last refresh: {new Date(lastRefresh.started_at).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
             </span>
           )}
+          <button
+            onClick={handleEnrichTopLeads}
+            disabled={enriching}
+            className="font-mono text-xs px-4 py-2 transition-all"
+            style={{
+              background: enriching ? 'var(--border)' : 'var(--gold-bg)',
+              color: enriching ? 'var(--text-muted)' : 'var(--gold)',
+              border: '1px solid',
+              borderColor: enriching ? 'var(--border)' : 'var(--gold-border)',
+              cursor: enriching ? 'not-allowed' : 'pointer',
+              fontWeight: 600,
+            }}
+          >
+            {enriching && enrichProgress ? (enrichProgress.ai_running ? `AI ${enrichProgress.ai_current}/${enrichProgress.ai_total}` : `ENRICHING ${enrichProgress.current}/${enrichProgress.total}`) : 'ENRICH TOP LEADS'}
+          </button>
           <button
             onClick={handleBatchEnrich}
             disabled={enriching}
