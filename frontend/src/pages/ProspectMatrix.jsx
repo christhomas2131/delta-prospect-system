@@ -4,15 +4,15 @@ import { PressureBadge, StatusBadge, ScoreBar } from '../components/Badges'
 
 const STATUSES = ['unscreened', 'qualified', 'enriched', 'ready_for_outreach', 'suggested_dq', 'disqualified', 'archived']
 const SECTORS = ['Energy', 'Materials', 'Industrials', 'Utilities']
-const GOLD = '#D4AF37'
-const GOLD_DIM = '#555'
+const GOLD = 'var(--gold)'
+const GOLD_DIM = 'var(--text-muted)'
 
 function SortHeader({ label, field, sort, dir, onSort }) {
   const active = sort === field
   return (
     <th
       className="px-4 py-2.5 text-left font-mono text-xs uppercase cursor-pointer select-none"
-      style={{ color: active ? '#e2e8f0' : '#4a5a70', whiteSpace: 'nowrap' }}
+      style={{ color: active ? 'var(--text-primary)' : 'var(--text-muted)', whiteSpace: 'nowrap' }}
       onClick={() => onSort(field)}
     >
       {label} {active ? (dir === 'desc' ? '↓' : '↑') : ''}
@@ -41,9 +41,9 @@ function Chip({ label, count, active, onClick }) {
       className="font-mono text-xs flex items-center gap-1.5 transition-all"
       style={{
         padding: '3px 10px',
-        background: active ? '#1e3a5f' : 'none',
-        border: `1px solid ${active ? '#1e6fd4' : '#1e2530'}`,
-        color: active ? '#93c5fd' : '#4a5a70',
+        background: active ? 'var(--accent-border)' : 'none',
+        border: `1px solid ${active ? 'var(--accent)' : 'var(--border)'}`,
+        color: active ? 'var(--accent-light)' : 'var(--text-muted)',
         cursor: 'pointer',
         whiteSpace: 'nowrap',
       }}
@@ -51,8 +51,8 @@ function Chip({ label, count, active, onClick }) {
       {label}
       {count != null && (
         <span style={{
-          background: active ? 'rgba(30,111,212,0.3)' : '#1e2530',
-          color: active ? '#93c5fd' : '#4a5a70',
+          background: active ? 'rgba(30,111,212,0.3)' : 'var(--border)',
+          color: active ? 'var(--accent-light)' : 'var(--text-muted)',
           fontSize: 9,
           padding: '1px 5px',
           minWidth: 20,
@@ -222,15 +222,15 @@ export default function ProspectMatrix({ watchlistOnly = false }) {
     <div className="p-6">
       {/* Header */}
       <div className="mb-4">
-        <div className="font-mono text-xs tracking-widest uppercase mb-1" style={{ color: '#4a5a70' }}>
+        <div className="font-mono text-xs tracking-widest uppercase mb-1" style={{ color: 'var(--text-muted)' }}>
           {watchlistOnly ? 'Starred Companies' : 'Intelligence Platform'}
         </div>
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-semibold" style={{ color: '#e2e8f0', margin: 0 }}>
+            <h1 className="text-2xl font-semibold" style={{ color: 'var(--text-primary)', margin: 0 }}>
               {watchlistOnly ? 'Watchlist' : 'Prospect Matrix'}
             </h1>
-            <div className="text-sm mt-1" style={{ color: '#8fa3bf' }}>
+            <div className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>
               {total.toLocaleString()} {watchlistOnly ? 'starred' : 'prospects'}
             </div>
           </div>
@@ -240,13 +240,13 @@ export default function ProspectMatrix({ watchlistOnly = false }) {
             className="font-mono text-xs px-3 py-1.5 flex items-center gap-1.5 mt-1"
             style={{
               background: 'none',
-              border: '1px solid #1e2530',
-              color: '#4a5a70',
+              border: '1px solid var(--border)',
+              color: 'var(--text-muted)',
               textDecoration: 'none',
               cursor: 'pointer',
             }}
-            onMouseEnter={e => { e.currentTarget.style.borderColor = '#2d3a4d'; e.currentTarget.style.color = '#8fa3bf' }}
-            onMouseLeave={e => { e.currentTarget.style.borderColor = '#1e2530'; e.currentTarget.style.color = '#4a5a70' }}
+            onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--border-strong)'; e.currentTarget.style.color = 'var(--text-secondary)' }}
+            onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--text-muted)' }}
           >
             ↓ Export CSV
           </a>
@@ -278,7 +278,7 @@ export default function ProspectMatrix({ watchlistOnly = false }) {
         {hasFilters && (
           <button onClick={clearAll}
             className="px-3 py-1.5 text-xs font-mono"
-            style={{ background: 'none', border: '1px solid #1e2530', color: '#8fa3bf', cursor: 'pointer' }}>
+            style={{ background: 'none', border: '1px solid var(--border)', color: 'var(--text-secondary)', cursor: 'pointer' }}>
             ✕ Clear
           </button>
         )}
@@ -293,7 +293,7 @@ export default function ProspectMatrix({ watchlistOnly = false }) {
 
       {/* Error banner */}
       {error && (
-        <div className="mb-4 px-4 py-2 text-sm font-mono" style={{ background: '#1f0808', border: '1px solid #7f1d1d', color: '#ef4444' }}>
+        <div className="mb-4 px-4 py-2 text-sm font-mono" style={{ background: 'var(--risk-bg)', border: '1px solid var(--risk-border)', color: 'var(--risk)' }}>
           ⚠ {error}
         </div>
       )}
@@ -303,30 +303,30 @@ export default function ProspectMatrix({ watchlistOnly = false }) {
         <div style={{ overflowX: 'auto' }}>
           <table className="w-full" style={{ minWidth: 980 }}>
             <thead>
-              <tr style={{ borderBottom: '1px solid #1e2530' }}>
+              <tr style={{ borderBottom: '1px solid var(--border)' }}>
                 <th className="px-3 py-2.5" style={{ width: 36 }} />
                 <SortHeader label="Ticker" field="ticker" sort={sort} dir={dir} onSort={handleSort} />
                 <SortHeader label="Company" field="company_name" sort={sort} dir={dir} onSort={handleSort} />
                 <SortHeader label="Sector" field="gics_sector" sort={sort} dir={dir} onSort={handleSort} />
                 <SortHeader label="Status" field="status" sort={sort} dir={dir} onSort={handleSort} />
                 <SortHeader label="Score" field="prospect_score" sort={sort} dir={dir} onSort={handleSort} />
-                <th className="px-4 py-2.5 text-left font-mono text-xs uppercase" style={{ color: '#4a5a70' }}>Signals</th>
-                <th className="px-4 py-2.5 text-left font-mono text-xs uppercase" style={{ color: '#4a5a70' }}>Dominant</th>
+                <th className="px-4 py-2.5 text-left font-mono text-xs uppercase" style={{ color: 'var(--text-muted)' }}>Signals</th>
+                <th className="px-4 py-2.5 text-left font-mono text-xs uppercase" style={{ color: 'var(--text-muted)' }}>Dominant</th>
                 <SortHeader label="PB" field="has_snapshot" sort={sort} dir={dir} onSort={handleSort} />
               </tr>
             </thead>
             <tbody>
               {loading && (
-                <tr><td colSpan={9} className="px-4 py-8 text-center font-mono text-xs" style={{ color: '#4a5a70' }}>Loading...</td></tr>
+                <tr><td colSpan={9} className="px-4 py-8 text-center font-mono text-xs" style={{ color: 'var(--text-muted)' }}>Loading...</td></tr>
               )}
               {!loading && data.length === 0 && (
-                <tr><td colSpan={9} className="px-4 py-8 text-center font-mono text-xs" style={{ color: '#4a5a70' }}>No prospects found</td></tr>
+                <tr><td colSpan={9} className="px-4 py-8 text-center font-mono text-xs" style={{ color: 'var(--text-muted)' }}>No prospects found</td></tr>
               )}
               {!loading && data.map(p => (
                 <tr
                   key={p.prospect_id}
                   className="table-row-hover"
-                  style={{ borderBottom: '1px solid #1e2530' }}
+                  style={{ borderBottom: '1px solid var(--border)' }}
                   onClick={() => navigate(`/prospects/${p.prospect_id}`)}
                 >
                   {/* Star — stop propagation so row click doesn't navigate */}
@@ -336,31 +336,31 @@ export default function ProspectMatrix({ watchlistOnly = false }) {
                       onClick={e => toggleWatchlist(e, p.prospect_id)}
                     />
                   </td>
-                  <td className="px-4 py-2.5 font-mono text-sm font-semibold" style={{ color: '#1e6fd4' }}>{p.ticker}</td>
-                  <td className="px-4 py-2.5 text-sm" style={{ color: '#e2e8f0', maxWidth: 220 }}>
+                  <td className="px-4 py-2.5 font-mono text-sm font-semibold" style={{ color: 'var(--accent)' }}>{p.ticker}</td>
+                  <td className="px-4 py-2.5 text-sm" style={{ color: 'var(--text-primary)', maxWidth: 220 }}>
                     <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {p.company_name}
                     </div>
                   </td>
-                  <td className="px-4 py-2.5 font-mono text-xs" style={{ color: '#8fa3bf' }}>{p.gics_sector}</td>
+                  <td className="px-4 py-2.5 font-mono text-xs" style={{ color: 'var(--text-secondary)' }}>{p.gics_sector}</td>
                   <td className="px-4 py-2.5"><StatusBadge status={p.status} /></td>
                   <td className="px-4 py-2.5"><ScoreBar score={p.prospect_score} /></td>
-                  <td className="px-4 py-2.5 font-mono text-xs" style={{ color: '#8fa3bf' }}>
+                  <td className="px-4 py-2.5 font-mono text-xs" style={{ color: 'var(--text-secondary)' }}>
                     {p.total_signals > 0 ? (
                       <span>
-                        <span style={{ color: '#e2e8f0' }}>{p.total_signals}</span>
-                        {p.strong_signals > 0 && <span style={{ color: '#f97316' }}> ({p.strong_signals}★)</span>}
+                        <span style={{ color: 'var(--text-primary)' }}>{p.total_signals}</span>
+                        {p.strong_signals > 0 && <span style={{ color: 'var(--ops)' }}> ({p.strong_signals}★)</span>}
                       </span>
                     ) : '—'}
                   </td>
                   <td className="px-4 py-2.5">
                     {p.primary_headwind
-                      ? <span className="text-xs" style={{ color: '#8fa3bf' }}>{p.primary_headwind.slice(0, 30)}…</span>
+                      ? <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>{p.primary_headwind.slice(0, 30)}…</span>
                       : '—'}
                   </td>
                   <td className="px-4 py-2.5 text-center font-mono text-xs"
                     title={p.has_snapshot ? 'PitchBook snapshot available' : 'No snapshot'}>
-                    <span style={{ color: p.has_snapshot ? '#22c55e' : '#2d3a4d' }}>
+                    <span style={{ color: p.has_snapshot ? 'var(--positive)' : 'var(--border-strong)' }}>
                       {p.has_snapshot ? '●' : '○'}
                     </span>
                   </td>
@@ -372,19 +372,19 @@ export default function ProspectMatrix({ watchlistOnly = false }) {
 
         {/* Pagination */}
         {totalPages > 1 && (
-          <div className="flex items-center justify-between px-4 py-3" style={{ borderTop: '1px solid #1e2530' }}>
-            <span className="font-mono text-xs" style={{ color: '#4a5a70' }}>
+          <div className="flex items-center justify-between px-4 py-3" style={{ borderTop: '1px solid var(--border)' }}>
+            <span className="font-mono text-xs" style={{ color: 'var(--text-muted)' }}>
               Page {page + 1} of {totalPages} ({total.toLocaleString()} total)
             </span>
             <div className="flex gap-2">
               <button onClick={() => setPage(p => p - 1)} disabled={page === 0}
                 className="font-mono text-xs px-3 py-1.5"
-                style={{ background: 'none', border: '1px solid #1e2530', color: page === 0 ? '#2d3a4d' : '#8fa3bf', cursor: page === 0 ? 'not-allowed' : 'pointer' }}>
+                style={{ background: 'none', border: '1px solid var(--border)', color: page === 0 ? 'var(--border-strong)' : 'var(--text-secondary)', cursor: page === 0 ? 'not-allowed' : 'pointer' }}>
                 ← Prev
               </button>
               <button onClick={() => setPage(p => p + 1)} disabled={page >= totalPages - 1}
                 className="font-mono text-xs px-3 py-1.5"
-                style={{ background: 'none', border: '1px solid #1e2530', color: page >= totalPages - 1 ? '#2d3a4d' : '#8fa3bf', cursor: page >= totalPages - 1 ? 'not-allowed' : 'pointer' }}>
+                style={{ background: 'none', border: '1px solid var(--border)', color: page >= totalPages - 1 ? 'var(--border-strong)' : 'var(--text-secondary)', cursor: page >= totalPages - 1 ? 'not-allowed' : 'pointer' }}>
                 Next →
               </button>
             </div>

@@ -10,8 +10,8 @@ const LEAD_TIERS = [
   { value: 'watch', label: 'Watch' },
   { value: 'not_qualified', label: 'Not Qualified' },
 ]
-const GOLD = '#D4AF37'
-const GOLD_DIM = '#555'
+const GOLD = 'var(--gold)'
+const GOLD_DIM = 'var(--text-muted)'
 
 function fmtPrize(dollars) {
   if (!dollars || dollars === 0) return null
@@ -21,19 +21,19 @@ function fmtPrize(dollars) {
 }
 
 function DealFitBadge({ prize }) {
-  if (!prize) return <span style={{ color: '#2d3a4d', fontFamily: 'monospace', fontSize: 9 }}>—</span>
+  if (!prize) return <span style={{ color: 'var(--border-strong)', fontFamily: 'monospace', fontSize: 9 }}>—</span>
   if (prize >= 50_000_000) return (
-    <span className="font-mono" style={{ fontSize: 9, padding: '2px 5px', background: '#431407', border: '1px solid #c2410c', color: '#fb923c' }}>
+    <span className="font-mono" style={{ fontSize: 9, padding: '2px 5px', background: 'var(--ops-bg)', border: '1px solid var(--ops-border)', color: 'var(--ops-light)' }}>
       ENTERPRISE
     </span>
   )
   if (prize >= 5_000_000) return (
-    <span className="font-mono" style={{ fontSize: 9, padding: '2px 5px', background: '#052e16', border: '1px solid #14532d', color: '#22c55e' }}>
+    <span className="font-mono" style={{ fontSize: 9, padding: '2px 5px', background: 'var(--positive-bg)', border: '1px solid var(--positive-border)', color: 'var(--positive)' }}>
       SWEET SPOT
     </span>
   )
   return (
-    <span className="font-mono" style={{ fontSize: 9, padding: '2px 5px', background: '#111418', border: '1px solid #1e2530', color: '#6b7280' }}>
+    <span className="font-mono" style={{ fontSize: 9, padding: '2px 5px', background: 'var(--card)', border: '1px solid var(--border)', color: 'var(--text-soft)' }}>
       SMALL
     </span>
   )
@@ -44,7 +44,7 @@ function SortHeader({ label, field, sort, dir, onSort }) {
   return (
     <th
       className="px-4 py-2.5 text-left font-mono text-xs uppercase cursor-pointer select-none"
-      style={{ color: active ? '#e2e8f0' : '#4a5a70', whiteSpace: 'nowrap' }}
+      style={{ color: active ? 'var(--text-primary)' : 'var(--text-muted)', whiteSpace: 'nowrap' }}
       onClick={() => onSort(field)}
     >
       {label} {active ? (dir === 'desc' ? '↓' : '↑') : ''}
@@ -73,9 +73,9 @@ function Chip({ label, count, active, onClick }) {
       className="font-mono text-xs flex items-center gap-1.5 transition-all"
       style={{
         padding: '3px 10px',
-        background: active ? '#1e3a5f' : 'transparent',
-        border: `1px solid ${active ? '#3b82f6' : '#3d4f63'}`,
-        color: active ? '#e2e8f0' : '#8fa3bf',
+        background: active ? 'var(--accent-border)' : 'transparent',
+        border: `1px solid ${active ? 'var(--info)' : 'var(--border-strong)'}`,
+        color: active ? 'var(--text-primary)' : 'var(--text-secondary)',
         cursor: 'pointer',
         whiteSpace: 'nowrap',
       }}
@@ -84,7 +84,7 @@ function Chip({ label, count, active, onClick }) {
       {count != null && (
         <span style={{
           background: active ? 'rgba(59,130,246,0.3)' : 'rgba(30,37,48,0.8)',
-          color: active ? '#e2e8f0' : '#8fa3bf',
+          color: active ? 'var(--text-primary)' : 'var(--text-secondary)',
           fontSize: 9,
           padding: '1px 5px',
           minWidth: 20,
@@ -99,9 +99,9 @@ function Chip({ label, count, active, onClick }) {
 }
 
 function pillarColor(value) {
-  if (value === 0 || value == null) return '#2d3a4d'
-  if (value <= 2) return '#8fa3bf'
-  return '#e2e8f0'
+  if (value === 0 || value == null) return 'var(--border-strong)'
+  if (value <= 2) return 'var(--text-secondary)'
+  return 'var(--text-primary)'
 }
 
 export default function LeadMatrix({ watchlistOnly = false }) {
@@ -325,18 +325,18 @@ export default function LeadMatrix({ watchlistOnly = false }) {
   ]
 
   return (
-    <div className="p-6" style={{ background: '#0a0c0f', minHeight: '100vh' }}>
+    <div className="p-6" style={{ background: 'var(--bg)', minHeight: '100vh' }}>
       {/* Header */}
       <div className="mb-4">
-        <div className="font-mono text-xs tracking-widest uppercase mb-1" style={{ color: '#4a5a70' }}>
+        <div className="font-mono text-xs tracking-widest uppercase mb-1" style={{ color: 'var(--text-muted)' }}>
           {watchlistOnly ? 'Starred Companies' : 'Intelligence Platform'}
         </div>
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-semibold" style={{ color: '#e2e8f0', margin: 0 }}>
+            <h1 className="text-2xl font-semibold" style={{ color: 'var(--text-primary)', margin: 0 }}>
               {watchlistOnly ? 'Watchlist' : 'Lead Matrix'}
             </h1>
-            <div className="text-sm mt-1" style={{ color: '#8fa3bf' }}>
+            <div className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>
               {total.toLocaleString()} {watchlistOnly ? 'starred' : 'prospects'}
             </div>
           </div>
@@ -359,10 +359,10 @@ export default function LeadMatrix({ watchlistOnly = false }) {
               disabled={enriching}
               className="font-mono text-xs px-4 py-1.5 transition-all"
               style={{
-                background: enriching ? '#1e2530' : '#14532d',
-                color: enriching ? '#4a5a70' : '#22c55e',
+                background: enriching ? 'var(--border)' : 'var(--positive-border)',
+                color: enriching ? 'var(--text-muted)' : 'var(--positive)',
                 border: '1px solid',
-                borderColor: enriching ? '#1e2530' : '#166534',
+                borderColor: enriching ? 'var(--border)' : 'var(--positive-border)',
                 cursor: enriching ? 'not-allowed' : 'pointer',
               }}
             >
@@ -373,13 +373,13 @@ export default function LeadMatrix({ watchlistOnly = false }) {
               className="font-mono text-xs px-3 py-1.5 flex items-center gap-1.5"
               style={{
                 background: 'none',
-                border: '1px solid #2d3a4d',
-                color: '#8fa3bf',
+                border: '1px solid var(--border-strong)',
+                color: 'var(--text-secondary)',
                 textDecoration: 'none',
                 cursor: 'pointer',
               }}
-              onMouseEnter={e => { e.currentTarget.style.borderColor = '#4a5a70'; e.currentTarget.style.color = '#e2e8f0' }}
-              onMouseLeave={e => { e.currentTarget.style.borderColor = '#2d3a4d'; e.currentTarget.style.color = '#8fa3bf' }}
+              onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--text-muted)'; e.currentTarget.style.color = 'var(--text-primary)' }}
+              onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-strong)'; e.currentTarget.style.color = 'var(--text-secondary)' }}
             >
               ↓ Export CSV
             </a>
@@ -389,21 +389,21 @@ export default function LeadMatrix({ watchlistOnly = false }) {
 
       {/* Toast */}
       {toast && (
-        <div className="mb-4 px-4 py-2 text-sm font-mono" style={{ background: toast.ok ? '#052e16' : '#1f0808', border: `1px solid ${toast.ok ? '#14532d' : '#7f1d1d'}`, color: toast.ok ? '#22c55e' : '#ef4444' }}>
+        <div className="mb-4 px-4 py-2 text-sm font-mono" style={{ background: toast.ok ? 'var(--positive-bg)' : 'var(--risk-bg)', border: `1px solid ${toast.ok ? 'var(--positive-border)' : 'var(--risk-border)'}`, color: toast.ok ? 'var(--positive)' : 'var(--risk)' }}>
           {toast.msg}
         </div>
       )}
 
       {/* Enrichment Progress */}
       {enrichProgress && (
-        <div className="mb-4 px-4 py-3 font-mono text-xs" style={{ background: '#111418', border: '1px solid #14532d' }}>
+        <div className="mb-4 px-4 py-3 font-mono text-xs" style={{ background: 'var(--card)', border: '1px solid var(--positive-border)' }}>
           {/* Phase 1: Rule-based enrichment */}
           {!enrichProgress.ai_running && (
             <div className="flex items-center justify-between mb-2">
-              <span style={{ color: '#22c55e' }}>
+              <span style={{ color: 'var(--positive)' }}>
                 Enriching {enrichProgress.current} of {enrichProgress.total} — {enrichProgress.ticker}
               </span>
-              <span style={{ color: '#4a5a70' }}>
+              <span style={{ color: 'var(--text-muted)' }}>
                 {enrichProgress.ok} done · {enrichProgress.skip} skipped · {enrichProgress.fail} failed
               </span>
             </div>
@@ -411,43 +411,43 @@ export default function LeadMatrix({ watchlistOnly = false }) {
           {/* Phase 2: AI deep analysis */}
           {enrichProgress.ai_running && (
             <div className="flex items-center justify-between mb-2">
-              <span style={{ color: '#D4AF37' }}>
+              <span style={{ color: 'var(--gold)' }}>
                 ◆ AI analysis on top prospects — {enrichProgress.ai_ticker}
               </span>
-              <span style={{ color: '#8B7120' }}>
+              <span style={{ color: 'var(--gold-dim)' }}>
                 {enrichProgress.ai_current} of {enrichProgress.ai_total}
               </span>
             </div>
           )}
           {/* Post-enrichment: AI analysis queued */}
           {!enrichProgress.ai_running && enrichProgress.ai_total > 0 && enrichProgress.ai_current === 0 && (
-            <div className="mb-2" style={{ color: '#8B7120' }}>
+            <div className="mb-2" style={{ color: 'var(--gold-dim)' }}>
               ◆ AI analysis starting...
             </div>
           )}
           {/* Progress bar */}
-          <div style={{ width: '100%', height: 4, background: '#1e2530', display: 'flex', gap: 2 }}>
+          <div style={{ width: '100%', height: 4, background: 'var(--border)', display: 'flex', gap: 2 }}>
             {/* Enrichment bar */}
             <div style={{
               flex: enrichProgress.ai_total > 0 ? '3 3 0' : '1 1 0',
               height: '100%',
-              background: '#1e2530',
+              background: 'var(--border)',
               position: 'relative',
             }}>
               <div style={{
                 position: 'absolute', top: 0, left: 0, bottom: 0,
                 width: `${enrichProgress.total > 0 ? (enrichProgress.current / enrichProgress.total * 100) : 0}%`,
-                background: '#22c55e',
+                background: 'var(--positive)',
                 transition: 'width 0.3s',
               }} />
             </div>
             {/* AI bar (only shown when AI phase is active or complete) */}
             {enrichProgress.ai_total > 0 && (
-              <div style={{ flex: '1 1 0', height: '100%', background: '#1a1508', position: 'relative' }}>
+              <div style={{ flex: '1 1 0', height: '100%', background: 'var(--gold-bg)', position: 'relative' }}>
                 <div style={{
                   position: 'absolute', top: 0, left: 0, bottom: 0,
                   width: `${enrichProgress.ai_total > 0 ? (enrichProgress.ai_current / enrichProgress.ai_total * 100) : 0}%`,
-                  background: '#D4AF37',
+                  background: 'var(--gold)',
                   transition: 'width 0.3s',
                 }} />
               </div>
@@ -455,8 +455,8 @@ export default function LeadMatrix({ watchlistOnly = false }) {
           </div>
           {enrichProgress.ai_total > 0 && (
             <div className="flex justify-between mt-1">
-              <span style={{ color: '#22c55e', fontSize: 8 }}>RULE-BASED</span>
-              <span style={{ color: '#8B7120', fontSize: 8 }}>◆ AI DEEP ANALYSIS</span>
+              <span style={{ color: 'var(--positive)', fontSize: 8 }}>RULE-BASED</span>
+              <span style={{ color: 'var(--gold-dim)', fontSize: 8 }}>◆ AI DEEP ANALYSIS</span>
             </div>
           )}
         </div>
@@ -489,9 +489,9 @@ export default function LeadMatrix({ watchlistOnly = false }) {
           onClick={() => { setAustraliaOnly(a => !a); setPage(0) }}
           className="font-mono text-xs px-3 py-1.5 flex items-center gap-1.5"
           style={{
-            background: australiaOnly ? '#1e3a5f' : 'transparent',
-            border: `1px solid ${australiaOnly ? '#3b82f6' : '#3d4f63'}`,
-            color: australiaOnly ? '#e2e8f0' : '#8fa3bf',
+            background: australiaOnly ? 'var(--accent-border)' : 'transparent',
+            border: `1px solid ${australiaOnly ? 'var(--info)' : 'var(--border-strong)'}`,
+            color: australiaOnly ? 'var(--text-primary)' : 'var(--text-secondary)',
             cursor: 'pointer',
           }}
         >
@@ -504,9 +504,9 @@ export default function LeadMatrix({ watchlistOnly = false }) {
             onClick={() => setCityDropdownOpen(o => !o)}
             className="font-mono text-xs px-3 py-1.5 flex items-center gap-1.5"
             style={{
-              background: selectedCities.length > 0 ? '#1e3a5f' : 'transparent',
-              border: `1px solid ${selectedCities.length > 0 ? '#3b82f6' : '#3d4f63'}`,
-              color: selectedCities.length > 0 ? '#e2e8f0' : '#8fa3bf',
+              background: selectedCities.length > 0 ? 'var(--accent-border)' : 'transparent',
+              border: `1px solid ${selectedCities.length > 0 ? 'var(--info)' : 'var(--border-strong)'}`,
+              color: selectedCities.length > 0 ? 'var(--text-primary)' : 'var(--text-secondary)',
               cursor: 'pointer',
             }}
           >
@@ -516,7 +516,7 @@ export default function LeadMatrix({ watchlistOnly = false }) {
             <div
               style={{
                 position: 'absolute', top: '100%', left: 0, zIndex: 50,
-                background: '#111418', border: '1px solid #2d3a4d',
+                background: 'var(--card)', border: '1px solid var(--border-strong)',
                 minWidth: 160, marginTop: 2,
               }}
               onMouseLeave={() => setCityDropdownOpen(false)}
@@ -525,17 +525,17 @@ export default function LeadMatrix({ watchlistOnly = false }) {
                 <label key={city}
                   className="flex items-center gap-2 px-3 py-1.5 cursor-pointer font-mono text-xs"
                   style={{
-                    color: selectedCities.includes(city) ? '#e2e8f0' : '#8fa3bf',
-                    background: selectedCities.includes(city) ? '#1e2c3d' : 'transparent',
+                    color: selectedCities.includes(city) ? 'var(--text-primary)' : 'var(--text-secondary)',
+                    background: selectedCities.includes(city) ? 'var(--accent-soft)' : 'transparent',
                   }}
-                  onMouseEnter={e => { if (!selectedCities.includes(city)) e.currentTarget.style.background = '#161b24' }}
+                  onMouseEnter={e => { if (!selectedCities.includes(city)) e.currentTarget.style.background = 'var(--card-hover)' }}
                   onMouseLeave={e => { if (!selectedCities.includes(city)) e.currentTarget.style.background = 'transparent' }}
                 >
                   <input
                     type="checkbox"
                     checked={selectedCities.includes(city)}
                     onChange={() => toggleCity(city)}
-                    style={{ accentColor: '#3b82f6' }}
+                    style={{ accentColor: 'var(--info)' }}
                   />
                   {city}
                 </label>
@@ -544,7 +544,7 @@ export default function LeadMatrix({ watchlistOnly = false }) {
                 <button
                   onClick={() => { setSelectedCities([]); setCityDropdownOpen(false) }}
                   className="w-full font-mono text-xs px-3 py-1.5 text-left"
-                  style={{ color: '#ef4444', borderTop: '1px solid #2d3a4d', background: 'none', cursor: 'pointer' }}
+                  style={{ color: 'var(--risk)', borderTop: '1px solid var(--border-strong)', background: 'none', cursor: 'pointer' }}
                 >
                   ✕ Clear cities
                 </button>
@@ -556,7 +556,7 @@ export default function LeadMatrix({ watchlistOnly = false }) {
         {hasFilters && (
           <button onClick={clearAll}
             className="px-3 py-1.5 text-xs font-mono"
-            style={{ background: 'none', border: '1px solid #2d3a4d', color: '#8fa3bf', cursor: 'pointer' }}>
+            style={{ background: 'none', border: '1px solid var(--border-strong)', color: 'var(--text-secondary)', cursor: 'pointer' }}>
             ✕ Clear all
           </button>
         )}
@@ -569,16 +569,16 @@ export default function LeadMatrix({ watchlistOnly = false }) {
           onClick={() => setShowPillars(s => !s)}
           className="font-mono text-xs px-3 py-1.5 flex items-center gap-1.5"
           style={{
-            background: showPillars ? '#1a2535' : 'transparent',
-            border: '1px solid #3d4f63',
-            color: showPillars ? '#93c5fd' : '#6b7f96',
+            background: showPillars ? 'var(--accent-soft)' : 'transparent',
+            border: '1px solid var(--border-strong)',
+            color: showPillars ? 'var(--accent-light)' : 'var(--text-muted)',
             cursor: 'pointer',
           }}
         >
           {showPillars ? '▼' : '▶'} Pillar Detail
         </button>
 
-        <div style={{ width: 1, height: 18, background: '#1e2530', margin: '0 2px' }} />
+        <div style={{ width: 1, height: 18, background: 'var(--border)', margin: '0 2px' }} />
 
         {chips.map(c => (
           <Chip key={c.id} label={c.label} count={c.count} active={c.active} onClick={c.toggle} />
@@ -587,19 +587,19 @@ export default function LeadMatrix({ watchlistOnly = false }) {
 
       {/* Error banner */}
       {error && (
-        <div className="mb-4 px-4 py-2 text-sm font-mono" style={{ background: '#1f0808', border: '1px solid #7f1d1d', color: '#ef4444' }}>
+        <div className="mb-4 px-4 py-2 text-sm font-mono" style={{ background: 'var(--risk-bg)', border: '1px solid var(--risk-border)', color: 'var(--risk)' }}>
           ⚠ {error}
         </div>
       )}
 
       {/* Empty state */}
       {!loading && data.length === 0 && !error && (
-        <div style={{ background: '#111418', border: '1px solid #1e2530', padding: '48px 24px', textAlign: 'center' }}>
-          <div className="font-mono text-sm mb-3" style={{ color: '#8fa3bf' }}>No prospects match your filters</div>
+        <div style={{ background: 'var(--card)', border: '1px solid var(--border)', padding: '48px 24px', textAlign: 'center' }}>
+          <div className="font-mono text-sm mb-3" style={{ color: 'var(--text-secondary)' }}>No prospects match your filters</div>
           <button
             onClick={clearAll}
             className="font-mono text-xs px-4 py-2"
-            style={{ background: 'none', border: '1px solid #1e2530', color: '#8fa3bf', cursor: 'pointer' }}
+            style={{ background: 'none', border: '1px solid var(--border)', color: 'var(--text-secondary)', cursor: 'pointer' }}
           >
             Reset Filters
           </button>
@@ -608,11 +608,11 @@ export default function LeadMatrix({ watchlistOnly = false }) {
 
       {/* Table */}
       {(loading || data.length > 0) && (
-        <div style={{ background: '#111418', border: '1px solid #1e2530' }}>
-          <div style={{ overflowX: 'auto' }}>
-            <table className="w-full" style={{ minWidth: showPillars ? 1400 : 900 }}>
+        <div style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
+          <div className="table-scroll">
+            <table className="w-full sticky-head" style={{ minWidth: showPillars ? 1400 : 900 }}>
               <thead>
-                <tr style={{ borderBottom: '1px solid #1e2530' }}>
+                <tr style={{ borderBottom: '1px solid var(--border)' }}>
                   <th className="px-3 py-2.5" style={{ width: 36 }} />
                   <SortHeader label="Ticker" field="ticker" sort={sort} dir={dir} onSort={handleSort} />
                   <SortHeader label="Company" field="company_name" sort={sort} dir={dir} onSort={handleSort} />
@@ -627,15 +627,15 @@ export default function LeadMatrix({ watchlistOnly = false }) {
                     <SortHeader label="Future" field="sig_future" sort={sort} dir={dir} onSort={handleSort} />
                   </>}
                   <SortHeader label="Signals" field="total_signals" sort={sort} dir={dir} onSort={handleSort} />
-                  <th className="px-4 py-2.5 text-left font-mono text-xs uppercase" style={{ color: '#4a5a70', whiteSpace: 'nowrap' }}>Location</th>
+                  <th className="px-4 py-2.5 text-left font-mono text-xs uppercase" style={{ color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>Location</th>
                   <SortHeader label="Est. Impact" field="size_of_prize" sort={sort} dir={dir} onSort={handleSort} />
-                  <th className="px-4 py-2.5 text-left font-mono text-xs uppercase" style={{ color: '#4a5a70', whiteSpace: 'nowrap' }}>Deal Fit</th>
-                  <th className="px-4 py-2.5 text-left font-mono text-xs uppercase" style={{ color: '#4a5a70', whiteSpace: 'nowrap' }}>Top Signal</th>
+                  <th className="px-4 py-2.5 text-left font-mono text-xs uppercase" style={{ color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>Deal Fit</th>
+                  <th className="px-4 py-2.5 text-left font-mono text-xs uppercase" style={{ color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>Top Signal</th>
                 </tr>
               </thead>
               <tbody>
                 {loading && (
-                  <tr><td colSpan={showPillars ? 17 : 11} className="px-4 py-8 text-center font-mono text-xs" style={{ color: '#4a5a70' }}>Loading...</td></tr>
+                  <tr><td colSpan={showPillars ? 17 : 11} className="px-4 py-8 text-center font-mono text-xs" style={{ color: 'var(--text-muted)' }}>Loading...</td></tr>
                 )}
                 {!loading && data.map(p => {
                   const topSig = p.top_signal || ''
@@ -643,8 +643,8 @@ export default function LeadMatrix({ watchlistOnly = false }) {
                   return (
                     <tr
                       key={p.prospect_id}
-                      style={{ borderBottom: '1px solid #1e2530', cursor: 'pointer' }}
-                      onMouseEnter={e => { e.currentTarget.style.background = '#161b24' }}
+                      style={{ borderBottom: '1px solid var(--border)', cursor: 'pointer' }}
+                      onMouseEnter={e => { e.currentTarget.style.background = 'var(--card-hover)' }}
                       onMouseLeave={e => { e.currentTarget.style.background = 'none' }}
                       onClick={() => navigate(`/deep-intelligence/${p.prospect_id}`)}
                     >
@@ -656,17 +656,17 @@ export default function LeadMatrix({ watchlistOnly = false }) {
                         />
                       </td>
                       {/* Ticker */}
-                      <td className="px-4 py-2.5 font-mono text-sm font-semibold" style={{ color: '#1e6fd4' }}>
+                      <td className="px-4 py-2.5 font-mono text-sm font-semibold" style={{ color: 'var(--accent)' }}>
                         {p.ticker}
                       </td>
                       {/* Company */}
-                      <td className="px-4 py-2.5 text-sm" style={{ color: '#e2e8f0', maxWidth: 200 }}>
+                      <td className="px-4 py-2.5 text-sm" style={{ color: 'var(--text-primary)', maxWidth: 200 }}>
                         <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={p.company_name}>
                           {p.company_name}
                         </div>
                       </td>
                       {/* Sector */}
-                      <td className="px-4 py-2.5 font-mono text-xs" style={{ color: '#8fa3bf' }}>{p.gics_sector}</td>
+                      <td className="px-4 py-2.5 font-mono text-xs" style={{ color: 'var(--text-secondary)' }}>{p.gics_sector}</td>
                       {/* Lead Tier */}
                       <td className="px-4 py-2.5"><LeadTierBadge tier={p.lead_tier} /></td>
                       {/* Pillar columns (collapsible) */}
@@ -691,17 +691,17 @@ export default function LeadMatrix({ watchlistOnly = false }) {
                         </td>
                       </>}
                       {/* Total Signals */}
-                      <td className="px-4 py-2.5 font-mono text-xs text-center" style={{ color: p.total_signals > 0 ? '#e2e8f0' : '#2d3a4d' }}>
+                      <td className="px-4 py-2.5 font-mono text-xs text-center" style={{ color: p.total_signals > 0 ? 'var(--text-primary)' : 'var(--border-strong)' }}>
                         {p.total_signals > 0 ? p.total_signals : '—'}
                       </td>
                       {/* Location */}
-                      <td className="px-4 py-2.5 font-mono text-xs" style={{ color: '#8fa3bf', whiteSpace: 'nowrap' }}>
+                      <td className="px-4 py-2.5 font-mono text-xs" style={{ color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
                         {p.registered_city && p.registered_state
                           ? `${p.registered_city}, ${p.registered_state}`
                           : p.registered_state || 'Australia'}
                       </td>
                       {/* Est. Impact */}
-                      <td className="px-4 py-2.5 font-mono text-xs text-right" style={{ color: p.size_of_prize >= 5_000_000 ? '#22c55e' : p.size_of_prize > 0 ? '#8fa3bf' : '#2d3a4d' }}>
+                      <td className="px-4 py-2.5 font-mono text-xs text-right" style={{ color: p.size_of_prize >= 5_000_000 ? 'var(--positive)' : p.size_of_prize > 0 ? 'var(--text-secondary)' : 'var(--border-strong)' }}>
                         {fmtPrize(p.size_of_prize) || '—'}
                       </td>
                       {/* Deal Fit */}
@@ -709,7 +709,7 @@ export default function LeadMatrix({ watchlistOnly = false }) {
                         <DealFitBadge prize={p.size_of_prize} />
                       </td>
                       {/* Top Signal */}
-                      <td className="px-4 py-2.5 text-xs" style={{ color: '#8fa3bf', maxWidth: 260 }}>
+                      <td className="px-4 py-2.5 text-xs" style={{ color: 'var(--text-secondary)', maxWidth: 260 }}>
                         {topSig ? (
                           <div className="flex items-center gap-1.5">
                             <span title={topSig.length > 60 ? topSig : undefined} style={{ flex: 1 }}>
@@ -720,7 +720,7 @@ export default function LeadMatrix({ watchlistOnly = false }) {
                                 onClick={e => e.stopPropagation()}
                                 title="Open source announcement"
                                 className="font-mono text-xs"
-                                style={{ color: '#1e6fd4', textDecoration: 'none', flexShrink: 0 }}>↗</a>
+                                style={{ color: 'var(--accent)', textDecoration: 'none', flexShrink: 0 }}>↗</a>
                             )}
                           </div>
                         ) : '—'}
@@ -734,19 +734,19 @@ export default function LeadMatrix({ watchlistOnly = false }) {
 
           {/* Pagination */}
           {totalPages > 1 && (
-            <div className="flex items-center justify-between px-4 py-3" style={{ borderTop: '1px solid #1e2530' }}>
-              <span className="font-mono text-xs" style={{ color: '#4a5a70' }}>
+            <div className="flex items-center justify-between px-4 py-3" style={{ borderTop: '1px solid var(--border)' }}>
+              <span className="font-mono text-xs" style={{ color: 'var(--text-muted)' }}>
                 Page {page + 1} of {totalPages} ({total.toLocaleString()} total)
               </span>
               <div className="flex gap-2">
                 <button onClick={() => setPage(p => p - 1)} disabled={page === 0}
                   className="font-mono text-xs px-3 py-1.5"
-                  style={{ background: 'none', border: '1px solid #1e2530', color: page === 0 ? '#2d3a4d' : '#8fa3bf', cursor: page === 0 ? 'not-allowed' : 'pointer' }}>
+                  style={{ background: 'none', border: '1px solid var(--border)', color: page === 0 ? 'var(--border-strong)' : 'var(--text-secondary)', cursor: page === 0 ? 'not-allowed' : 'pointer' }}>
                   ← Prev
                 </button>
                 <button onClick={() => setPage(p => p + 1)} disabled={page >= totalPages - 1}
                   className="font-mono text-xs px-3 py-1.5"
-                  style={{ background: 'none', border: '1px solid #1e2530', color: page >= totalPages - 1 ? '#2d3a4d' : '#8fa3bf', cursor: page >= totalPages - 1 ? 'not-allowed' : 'pointer' }}>
+                  style={{ background: 'none', border: '1px solid var(--border)', color: page >= totalPages - 1 ? 'var(--border-strong)' : 'var(--text-secondary)', cursor: page >= totalPages - 1 ? 'not-allowed' : 'pointer' }}>
                   Next →
                 </button>
               </div>

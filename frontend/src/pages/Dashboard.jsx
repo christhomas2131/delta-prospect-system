@@ -3,10 +3,10 @@ import { useNavigate } from 'react-router-dom'
 
 function StatCard({ label, value, sub, color }) {
   return (
-    <div className="card p-4" style={{ borderLeft: `3px solid ${color || '#1e6fd4'}` }}>
-      <div className="text-xs font-mono uppercase tracking-widest mb-1" style={{ color: '#4a5a70' }}>{label}</div>
-      <div className="text-3xl font-mono font-semibold" style={{ color: color || '#e2e8f0' }}>{value ?? '-'}</div>
-      {sub && <div className="text-xs mt-1" style={{ color: '#8fa3bf' }}>{sub}</div>}
+    <div className="card p-4 h-full" style={{ borderLeft: `3px solid ${color || 'var(--accent)'}`, minHeight: 96 }}>
+      <div className="text-xs font-mono uppercase tracking-widest mb-1" style={{ color: 'var(--text-muted)' }}>{label}</div>
+      <div className="text-3xl font-mono font-semibold" style={{ color: color || 'var(--text-primary)', fontVariantNumeric: 'tabular-nums', lineHeight: 1.1 }}>{value ?? '-'}</div>
+      {sub && <div className="text-xs mt-1" style={{ color: 'var(--text-secondary)' }}>{sub}</div>}
     </div>
   )
 }
@@ -34,6 +34,7 @@ export default function Dashboard() {
   const [toast, setToast] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  const [topLeads, setTopLeads] = useState([])
   const navigate = useNavigate()
   const intervalRef = useRef(null)
   const enrichPollRef = useRef(null)
@@ -50,6 +51,10 @@ export default function Dashboard() {
       if (!statsRes.ok || !sectorsRes.ok) throw new Error('API returned an error')
       setStats(await statsRes.json())
       setSectors(await sectorsRes.json())
+      fetch('/api/prospects?limit=5&sort_by=prospect_score&sort_dir=desc')
+        .then(r => r.ok ? r.json() : null)
+        .then(d => setTopLeads(d?.data || []))
+        .catch(() => {})
     } catch {
       setError('Cannot reach the API - is the backend running?')
     }
@@ -161,11 +166,11 @@ export default function Dashboard() {
   if (error && !stats) {
     return (
       <div className="p-6">
-        <div className="card p-6 text-center" style={{ borderLeft: '3px solid #ef4444' }}>
-          <div className="font-mono text-sm mb-2" style={{ color: '#ef4444' }}>Connection Error</div>
-          <div className="text-sm mb-4" style={{ color: '#8fa3bf' }}>{error}</div>
+        <div className="card p-6 text-center" style={{ borderLeft: '3px solid var(--risk)' }}>
+          <div className="font-mono text-sm mb-2" style={{ color: 'var(--risk)' }}>Connection Error</div>
+          <div className="text-sm mb-4" style={{ color: 'var(--text-secondary)' }}>{error}</div>
           <button onClick={() => loadData()} className="font-mono text-xs px-4 py-2"
-            style={{ background: '#1e6fd4', color: '#fff', border: 'none', cursor: 'pointer' }}>
+            style={{ background: 'var(--accent)', color: 'var(--on-accent)', border: 'none', cursor: 'pointer' }}>
             Retry
           </button>
         </div>
@@ -176,7 +181,7 @@ export default function Dashboard() {
   if (loading && !stats) {
     return (
       <div className="p-6">
-        <div className="font-mono text-xs" style={{ color: '#4a5a70' }}>Loading dashboard...</div>
+        <div className="card p-6 font-mono text-xs" style={{ color: 'var(--text-muted)' }}>Loading dashboard<span className="animate-pulse">...</span></div>
       </div>
     )
   }
@@ -185,16 +190,16 @@ export default function Dashboard() {
     <div className="p-6">
       <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
         <div>
-          <div className="font-mono text-xs tracking-widest uppercase mb-1" style={{ color: '#4a5a70' }}>
+          <div className="font-mono text-xs tracking-widest uppercase mb-1" style={{ color: 'var(--text-muted)' }}>
             DELTA PROSPECT SYSTEM
           </div>
-          <h1 className="text-2xl font-semibold" style={{ color: '#e2e8f0', margin: 0 }}>
+          <h1 className="text-2xl font-semibold" style={{ color: 'var(--text-primary)', margin: 0 }}>
             Intelligence Dashboard
           </h1>
         </div>
         <div className="flex items-center gap-3 flex-wrap">
           {lastRefresh && (
-            <span className="font-mono text-xs" style={{ color: lastRefresh.status === 'failed' ? '#ef4444' : '#4a5a70' }}>
+            <span className="font-mono text-xs" style={{ color: lastRefresh.status === 'failed' ? 'var(--risk)' : 'var(--text-muted)' }}>
               Last refresh: {new Date(lastRefresh.started_at).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
             </span>
           )}
@@ -203,10 +208,10 @@ export default function Dashboard() {
             disabled={enriching}
             className="font-mono text-xs px-4 py-2 transition-all"
             style={{
-              background: enriching ? '#1e2530' : '#14532d',
-              color: enriching ? '#4a5a70' : '#22c55e',
+              background: enriching ? 'var(--border)' : 'var(--positive-border)',
+              color: enriching ? 'var(--text-muted)' : 'var(--positive)',
               border: '1px solid',
-              borderColor: enriching ? '#1e2530' : '#166534',
+              borderColor: enriching ? 'var(--border)' : 'var(--positive-border)',
               cursor: enriching ? 'not-allowed' : 'pointer',
             }}
           >
@@ -221,8 +226,8 @@ export default function Dashboard() {
             disabled={refreshing}
             className="font-mono text-xs px-4 py-2 transition-all"
             style={{
-              background: refreshing ? '#1e2530' : '#1e6fd4',
-              color: refreshing ? '#4a5a70' : '#fff',
+              background: refreshing ? 'var(--border)' : 'var(--accent)',
+              color: refreshing ? 'var(--text-muted)' : 'var(--on-accent)',
               border: 'none',
               cursor: refreshing ? 'not-allowed' : 'pointer',
             }}
@@ -233,38 +238,38 @@ export default function Dashboard() {
       </div>
 
       {toast && (
-        <div className="mb-4 px-4 py-2 text-sm font-mono" style={{ background: toast.ok ? '#052e16' : '#1f0808', border: `1px solid ${toast.ok ? '#14532d' : '#7f1d1d'}`, color: toast.ok ? '#22c55e' : '#ef4444' }}>
+        <div className="mb-4 px-4 py-2 text-sm font-mono" style={{ background: toast.ok ? 'var(--positive-bg)' : 'var(--risk-bg)', border: `1px solid ${toast.ok ? 'var(--positive-border)' : 'var(--risk-border)'}`, color: toast.ok ? 'var(--positive)' : 'var(--risk)' }}>
           {toast.msg}
         </div>
       )}
 
       {enrichProgress && (
-        <div className="mb-4 px-4 py-3 font-mono text-xs" style={{ background: '#111418', border: '1px solid #14532d' }}>
+        <div className="mb-4 px-4 py-3 font-mono text-xs" style={{ background: 'var(--card)', border: '1px solid var(--positive-border)' }}>
           {!enrichProgress.ai_running ? (
             <div className="flex items-center justify-between mb-2">
-              <span style={{ color: '#22c55e' }}>
+              <span style={{ color: 'var(--positive)' }}>
                 Enriching {enrichProgress.current} of {enrichProgress.total} - {enrichProgress.ticker}
               </span>
-              <span style={{ color: '#4a5a70' }}>
+              <span style={{ color: 'var(--text-muted)' }}>
                 {enrichProgress.ok} done · {enrichProgress.skip} skipped · {enrichProgress.fail} failed
               </span>
             </div>
           ) : (
             <div className="flex items-center justify-between mb-2">
-              <span style={{ color: '#D4AF37' }}>
+              <span style={{ color: 'var(--gold)' }}>
                 AI deep analysis {enrichProgress.ai_current} of {enrichProgress.ai_total} - {enrichProgress.ai_ticker}
               </span>
-              <span style={{ color: '#8B7120' }}>
+              <span style={{ color: 'var(--gold-dim)' }}>
                 {enrichProgress.ai_ok || 0} succeeded · {enrichProgress.ai_fail || 0} failed
               </span>
             </div>
           )}
           {enrichProgress.ai_message && (
-            <div className="mb-2" style={{ color: enrichProgress.ai_fail > 0 ? '#ef4444' : '#8fa3bf' }}>
+            <div className="mb-2" style={{ color: enrichProgress.ai_fail > 0 ? 'var(--risk)' : 'var(--text-secondary)' }}>
               {enrichProgress.ai_message}
             </div>
           )}
-          <div style={{ width: '100%', height: 4, background: '#1e2530' }}>
+          <div style={{ width: '100%', height: 4, background: 'var(--border)' }}>
             <div style={{
               width: `${
                 enrichProgress.ai_running
@@ -272,7 +277,7 @@ export default function Dashboard() {
                   : (enrichProgress.total > 0 ? (enrichProgress.current / enrichProgress.total * 100) : 0)
               }%`,
               height: '100%',
-              background: enrichProgress.ai_running ? '#D4AF37' : '#22c55e',
+              background: enrichProgress.ai_running ? 'var(--gold)' : 'var(--positive)',
               transition: 'width 0.3s',
             }} />
           </div>
@@ -280,25 +285,25 @@ export default function Dashboard() {
       )}
 
       {refreshProgress && (
-        <div className="mb-4 px-4 py-3 font-mono text-xs" style={{ background: '#111418', border: '1px solid #1e3a5f' }}>
+        <div className="mb-4 px-4 py-3 font-mono text-xs" style={{ background: 'var(--card)', border: '1px solid var(--accent-border)' }}>
           <div className="flex items-center gap-3">
-            <span style={{ color: '#3b82f6' }}>{refreshProgress.phase}</span>
+            <span style={{ color: 'var(--info)' }}>{refreshProgress.phase}</span>
             {refreshProgress.detail && (
-              <span style={{ color: '#4a5a70' }}>{refreshProgress.detail}</span>
+              <span style={{ color: 'var(--text-muted)' }}>{refreshProgress.detail}</span>
             )}
           </div>
           {refreshProgress.total > 0 && (
             <div className="mt-3">
-              <div className="mb-2 flex items-center justify-between" style={{ color: '#93c5fd' }}>
+              <div className="mb-2 flex items-center justify-between" style={{ color: 'var(--accent-light)' }}>
                 <span>{refreshProgress.current} / {refreshProgress.total} location profiles</span>
                 {refreshProgress.ticker && <span>{refreshProgress.ticker}</span>}
               </div>
-              <div style={{ height: '6px', background: '#0f172a', border: '1px solid #1e3a5f' }}>
+              <div style={{ height: '6px', background: 'var(--surface)', border: '1px solid var(--accent-border)' }}>
                 <div
                   style={{
                     height: '100%',
                     width: `${Math.max(0, Math.min(100, (refreshProgress.current / refreshProgress.total) * 100))}%`,
-                    background: '#3b82f6',
+                    background: 'var(--info)',
                     transition: 'width 0.2s ease',
                   }}
                 />
@@ -309,92 +314,121 @@ export default function Dashboard() {
       )}
 
       {error && stats && (
-        <div className="mb-4 px-4 py-2 text-xs font-mono" style={{ background: '#1f0808', border: '1px solid #7f1d1d', color: '#ef4444' }}>
+        <div className="mb-4 px-4 py-2 text-xs font-mono" style={{ background: 'var(--risk-bg)', border: '1px solid var(--risk-border)', color: 'var(--risk)' }}>
           API unreachable - showing last loaded data.{' '}
-          <button onClick={() => loadData()} style={{ textDecoration: 'underline', background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer' }}>Retry</button>
+          <button onClick={() => loadData()} style={{ textDecoration: 'underline', background: 'none', border: 'none', color: 'var(--risk)', cursor: 'pointer' }}>Retry</button>
         </div>
       )}
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
-        <StatCard label="Total Prospects" value={stats?.total_prospects?.toLocaleString()} color="#3b82f6" />
-        <StatCard label="Enriched" value={stats?.enriched} sub={`${stats?.ready_for_outreach || 0} ready for outreach`} color="#14b8a6" />
-        <StatCard label="Signals Detected" value={stats?.total_signals?.toLocaleString()} sub={`${stats?.strong_signals || 0} strong`} color="#f97316" />
-        <StatCard label="Avg Score" value={stats?.avg_score ? Number(stats.avg_score).toFixed(1) : '-'} color="#22c55e" />
+        <StatCard label="Total Prospects" value={stats?.total_prospects?.toLocaleString()} color="var(--info)" />
+        <StatCard label="Enriched" value={stats?.enriched} sub={`${stats?.ready_for_outreach || 0} ready for outreach`} color="var(--teal)" />
+        <StatCard label="Signals Detected" value={stats?.total_signals?.toLocaleString()} sub={`${stats?.strong_signals || 0} strong`} color="var(--ops)" />
+        <StatCard label="Avg Score" value={stats?.avg_score ? Number(stats.avg_score).toFixed(1) : '-'} color="var(--positive)" />
       </div>
-      <div className="mb-6">
-        <div
-          className="card p-4 cursor-pointer"
-          style={{ borderLeft: '3px solid #D4AF37', maxWidth: 220 }}
-          onClick={() => navigate('/watchlist')}
-        >
-          <div className="text-xs font-mono uppercase tracking-widest mb-1" style={{ color: '#8B7120' }}>Watchlist</div>
-          <div className="text-3xl font-mono font-semibold" style={{ color: '#D4AF37' }}>
-            {stats?.watchlist_count ?? '-'}
-          </div>
-          <div className="text-xs mt-1" style={{ color: '#4a5a70' }}>starred companies</div>
-        </div>
-      </div>
+
 
       {lastRefresh && (
         <div className="mb-6 card px-4 py-3" style={{
-          borderLeft: `3px solid ${lastRefresh.status === 'failed' ? '#ef4444' : '#3b82f6'}`,
+          borderLeft: `3px solid ${lastRefresh.status === 'failed' ? 'var(--risk)' : 'var(--info)'}`,
         }}>
-          <div className="font-mono text-xs uppercase tracking-widest mb-1" style={{ color: '#4a5a70' }}>
+          <div className="font-mono text-xs uppercase tracking-widest mb-1" style={{ color: 'var(--text-muted)' }}>
             Last ASX Refresh
           </div>
           {lastRefresh.status === 'failed' ? (
-            <div className="text-sm" style={{ color: '#ef4444' }}>
+            <div className="text-sm" style={{ color: 'var(--risk)' }}>
               Failed - {lastRefresh.error_message || 'Unknown error'}
             </div>
           ) : (
-            <div className="text-sm" style={{ color: '#8fa3bf' }}>
+            <div className="text-sm" style={{ color: 'var(--text-secondary)' }}>
               {lastRefresh.total_listings?.toLocaleString() || '?'} listings found, {lastRefresh.target_sector_count?.toLocaleString() || '?'} target sector
-              {lastRefresh.new_listings > 0 && <span style={{ color: '#22c55e' }}> - {lastRefresh.new_listings} new added</span>}
-              {lastRefresh.delisted_count > 0 && <span style={{ color: '#eab308' }}> - {lastRefresh.delisted_count} removed</span>}
+              {lastRefresh.new_listings > 0 && <span style={{ color: 'var(--positive)' }}> - {lastRefresh.new_listings} new added</span>}
+              {lastRefresh.delisted_count > 0 && <span style={{ color: 'var(--caution)' }}> - {lastRefresh.delisted_count} removed</span>}
             </div>
           )}
         </div>
       )}
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8">
-        <StatCard label="ASX Listings" value={stats?.total_listings?.toLocaleString()} color="#8fa3bf" />
-        <StatCard label="Target Sector" value={stats?.target_sector_count?.toLocaleString()} color="#8fa3bf" />
-        <StatCard label="Unscreened" value={stats?.unscreened?.toLocaleString()} color="#4a5a70" />
-        <StatCard label="Disqualified" value={stats?.disqualified || 0} color="#4a5a70" />
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
+        <div className="card p-4 cursor-pointer h-full" style={{ borderLeft: '3px solid var(--gold)', minHeight: 96 }} onClick={() => navigate('/watchlist')} title="Open watchlist">
+          <div className="text-xs font-mono uppercase tracking-widest mb-1" style={{ color: 'var(--gold-dim)', letterSpacing: '0.08em' }}>Watchlist</div>
+          <div className="text-3xl font-mono font-semibold" style={{ color: 'var(--gold)', fontVariantNumeric: 'tabular-nums', lineHeight: 1.1 }}>{stats?.watchlist_count ?? '-'}</div>
+          <div className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>starred</div>
+        </div>
+        <StatCard label="ASX Listings" value={stats?.total_listings?.toLocaleString()} color="var(--text-secondary)" />
+        <StatCard label="Target Sector" value={stats?.target_sector_count?.toLocaleString()} color="var(--text-secondary)" />
+        <StatCard label="Unscreened" value={stats?.unscreened?.toLocaleString()} color="var(--text-muted)" />
+        <StatCard label="Disqualified" value={stats?.disqualified || 0} color="var(--text-muted)" />
+      </div>
+
+      {/* Priority Leads */}
+      <div className="card mb-6">
+        <div className="px-4 py-3 flex items-center justify-between" style={{ borderBottom: '1px solid var(--border)' }}>
+          <span className="font-mono text-xs uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>Priority Leads</span>
+          <button onClick={() => navigate('/leads')} className="font-mono text-xs" style={{ color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer' }}>{'View all ->'}</button>
+        </div>
+        {topLeads.length === 0 ? (
+          <div className="px-4 py-6 font-mono text-xs" style={{ color: 'var(--text-muted)' }}>No scored prospects yet. Run enrichment to rank leads.</div>
+        ) : (
+          <div className="table-scroll">
+            <table className="w-full sticky-head" style={{ minWidth: 520 }}>
+              <thead>
+                <tr style={{ borderBottom: '1px solid var(--border)' }}>
+                  {['Ticker','Company','Sector','Score','Signals'].map(h => <th key={h} className="px-4 py-2 text-left font-mono text-xs uppercase" style={{ color: 'var(--text-muted)' }}>{h}</th>)}
+                </tr>
+              </thead>
+              <tbody>
+                {topLeads.map(p => {
+                  const score = p.prospect_score ? Number(p.prospect_score) : 0
+                  const sc = score >= 15 ? 'var(--positive)' : score >= 8 ? 'var(--caution)' : 'var(--accent)'
+                  return (
+                    <tr key={p.prospect_id} className="table-row-hover" style={{ borderBottom: '1px solid var(--border)' }} onClick={() => navigate(`/deep-intelligence/${p.prospect_id}`)}>
+                      <td className="px-4 py-2.5 font-mono text-sm font-semibold" style={{ color: 'var(--accent)' }}>{p.ticker}</td>
+                      <td className="px-4 py-2.5 text-sm" style={{ color: 'var(--text-primary)', maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.company_name}</td>
+                      <td className="px-4 py-2.5 font-mono text-xs" style={{ color: 'var(--text-secondary)' }}>{p.gics_sector}</td>
+                      <td className="px-4 py-2.5 font-mono text-sm font-semibold" style={{ color: sc }}>{score ? score.toFixed(1) : '\u2014'}</td>
+                      <td className="px-4 py-2.5 font-mono text-xs" style={{ color: p.total_signals > 0 ? 'var(--text-primary)' : 'var(--text-muted)' }}>{p.total_signals ?? 0}</td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
       <div className="card mb-6">
-        <div className="px-4 py-3 flex items-center justify-between" style={{ borderBottom: '1px solid #1e2530' }}>
-          <span className="font-mono text-xs uppercase tracking-widest" style={{ color: '#4a5a70' }}>
+        <div className="px-4 py-3 flex items-center justify-between" style={{ borderBottom: '1px solid var(--border)' }}>
+          <span className="font-mono text-xs uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
             Sector Breakdown
           </span>
           <button
             onClick={() => navigate('/leads')}
             className="font-mono text-xs"
-            style={{ color: '#1e6fd4', background: 'none', border: 'none', cursor: 'pointer' }}
+            style={{ color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer' }}
           >
             {'View Leads ->'}
           </button>
         </div>
-        <div style={{ overflowX: 'auto' }}>
-          <table className="w-full" style={{ minWidth: 600 }}>
+        <div className="table-scroll">
+          <table className="w-full sticky-head" style={{ minWidth: 600 }}>
             <thead>
-              <tr style={{ borderBottom: '1px solid #1e2530' }}>
+              <tr style={{ borderBottom: '1px solid var(--border)' }}>
                 {['Sector', 'Industry', 'Companies', 'In Matrix', 'Enriched', 'Avg Score'].map(h => (
-                  <th key={h} className="px-4 py-2 text-left font-mono text-xs uppercase" style={{ color: '#4a5a70' }}>{h}</th>
+                  <th key={h} className="px-4 py-2 text-left font-mono text-xs uppercase" style={{ color: 'var(--text-muted)' }}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {sectors.map((s, i) => (
-                <tr key={i} className="table-row-hover" style={{ borderBottom: '1px solid #1e2530' }}
+                <tr key={i} className="table-row-hover" style={{ borderBottom: '1px solid var(--border)' }}
                   onClick={() => navigate(`/leads?sector=${encodeURIComponent(s.gics_sector)}`)}>
-                  <td className="px-4 py-2.5 font-mono text-xs font-semibold" style={{ color: '#e2e8f0' }}>{s.gics_sector}</td>
-                  <td className="px-4 py-2.5 text-xs" style={{ color: '#8fa3bf' }}>{s.gics_industry_group}</td>
-                  <td className="px-4 py-2.5 font-mono text-xs" style={{ color: '#e2e8f0' }}>{s.total_companies}</td>
-                  <td className="px-4 py-2.5 font-mono text-xs" style={{ color: '#8fa3bf' }}>{s.in_matrix}</td>
-                  <td className="px-4 py-2.5 font-mono text-xs" style={{ color: '#14b8a6' }}>{s.enriched}</td>
-                  <td className="px-4 py-2.5 font-mono text-xs" style={{ color: s.avg_score ? '#22c55e' : '#4a5a70' }}>
+                  <td className="px-4 py-2.5 font-mono text-xs font-semibold" style={{ color: 'var(--text-primary)' }}>{s.gics_sector}</td>
+                  <td className="px-4 py-2.5 text-xs" style={{ color: 'var(--text-secondary)' }}>{s.gics_industry_group}</td>
+                  <td className="px-4 py-2.5 font-mono text-xs" style={{ color: 'var(--text-primary)' }}>{s.total_companies}</td>
+                  <td className="px-4 py-2.5 font-mono text-xs" style={{ color: 'var(--text-secondary)' }}>{s.in_matrix}</td>
+                  <td className="px-4 py-2.5 font-mono text-xs" style={{ color: 'var(--teal)' }}>{s.enriched}</td>
+                  <td className="px-4 py-2.5 font-mono text-xs" style={{ color: s.avg_score ? 'var(--positive)' : 'var(--text-muted)' }}>
                     {s.avg_score ? Number(s.avg_score).toFixed(1) : '-'}
                   </td>
                 </tr>

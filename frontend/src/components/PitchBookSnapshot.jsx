@@ -15,7 +15,7 @@ function renderInline(text) {
   const parts = text.split(/(\*\*[^*]+\*\*)/)
   return parts.map((part, i) =>
     part.startsWith('**') && part.endsWith('**')
-      ? <strong key={i} style={{ color: '#e2e8f0' }}>{part.slice(2, -2)}</strong>
+      ? <strong key={i} style={{ color: 'var(--text-primary)' }}>{part.slice(2, -2)}</strong>
       : part
   )
 }
@@ -29,7 +29,7 @@ function MarkdownBody({ text }) {
   const flushList = () => {
     if (listBuf.length) {
       nodes.push(
-        <ul key={`ul-${nodes.length}`} style={{ paddingLeft: '1.2rem', margin: '0.2rem 0', color: '#c9d5e0', fontSize: '0.875rem' }}>
+        <ul key={`ul-${nodes.length}`} style={{ paddingLeft: '1.2rem', margin: '0.2rem 0', color: 'var(--text-body)', fontSize: '0.875rem' }}>
           {listBuf.map((item, i) => <li key={i} style={{ margin: '0.1rem 0' }}>{renderInline(item)}</li>)}
         </ul>
       )
@@ -40,13 +40,13 @@ function MarkdownBody({ text }) {
   lines.forEach((line, i) => {
     if (line.startsWith('### ')) {
       flushList()
-      nodes.push(<h3 key={i} style={{ color: '#e2e8f0', fontWeight: 600, fontSize: '0.875rem', margin: '0.75rem 0 0.2rem' }}>{renderInline(line.slice(4))}</h3>)
+      nodes.push(<h3 key={i} style={{ color: 'var(--text-primary)', fontWeight: 600, fontSize: '0.875rem', margin: '0.75rem 0 0.2rem' }}>{renderInline(line.slice(4))}</h3>)
     } else if (line.startsWith('## ')) {
       flushList()
-      nodes.push(<h2 key={i} style={{ color: '#e2e8f0', fontWeight: 600, fontSize: '0.95rem', margin: '0.75rem 0 0.2rem' }}>{renderInline(line.slice(3))}</h2>)
+      nodes.push(<h2 key={i} style={{ color: 'var(--text-primary)', fontWeight: 600, fontSize: '0.95rem', margin: '0.75rem 0 0.2rem' }}>{renderInline(line.slice(3))}</h2>)
     } else if (line.startsWith('# ')) {
       flushList()
-      nodes.push(<h1 key={i} style={{ color: '#e2e8f0', fontWeight: 600, fontSize: '1rem', margin: '0.75rem 0 0.2rem' }}>{renderInline(line.slice(2))}</h1>)
+      nodes.push(<h1 key={i} style={{ color: 'var(--text-primary)', fontWeight: 600, fontSize: '1rem', margin: '0.75rem 0 0.2rem' }}>{renderInline(line.slice(2))}</h1>)
     } else if (/^[-*] /.test(line)) {
       listBuf.push(line.slice(2))
     } else if (/^\d+\. /.test(line)) {
@@ -56,7 +56,7 @@ function MarkdownBody({ text }) {
       nodes.push(<div key={i} style={{ height: '0.4rem' }} />)
     } else {
       flushList()
-      nodes.push(<p key={i} style={{ color: '#c9d5e0', fontSize: '0.875rem', margin: '0.2rem 0', lineHeight: 1.5 }}>{renderInline(line)}</p>)
+      nodes.push(<p key={i} style={{ color: 'var(--text-body)', fontSize: '0.875rem', margin: '0.2rem 0', lineHeight: 1.5 }}>{renderInline(line)}</p>)
     }
   })
   flushList()
@@ -79,11 +79,11 @@ export default function PitchBookSnapshot({ prospectId }) {
   return (
     <div className="card mb-4">
       <div className="px-4 py-3 flex items-center gap-3" style={{ borderBottom: '1px solid rgba(245,184,61,0.3)' }}>
-        <span className="font-mono text-xs uppercase tracking-widest font-semibold" style={{ color: '#f5b83d' }}>
+        <span className="font-mono text-xs uppercase tracking-widest font-semibold" style={{ color: 'var(--gold)' }}>
           PitchBook Snapshot
         </span>
         {snapshot && (
-          <span className="font-mono text-xs" style={{ color: '#6b7280' }}>
+          <span className="font-mono text-xs" style={{ color: 'var(--text-soft)' }}>
             Last enriched: {relTime(snapshot.enriched_at)}
           </span>
         )}
@@ -93,7 +93,7 @@ export default function PitchBookSnapshot({ prospectId }) {
           <MarkdownBody text={snapshot.snapshot_markdown} />
         </div>
       ) : (
-        <div className="px-4 py-6 font-mono text-xs text-center" style={{ color: '#4a5a70' }}>
+        <div className="px-4 py-6 font-mono text-xs text-center" style={{ color: 'var(--text-muted)' }}>
           No PitchBook snapshot yet
         </div>
       )}

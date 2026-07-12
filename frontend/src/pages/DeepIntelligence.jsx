@@ -3,9 +3,9 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { PillarBadge, StrengthBadge, StatusBadge, LeadTierBadge, PILLAR_COLORS, PILLAR_LABELS } from '../components/Badges'
 import PitchBookSnapshot from '../components/PitchBookSnapshot'
 
-const GOLD = '#D4AF37'
-const GOLD_BG = '#1a1508'
-const GOLD_BORDER = '#8B7120'
+const GOLD = 'var(--gold)'
+const GOLD_BG = 'var(--gold-bg)'
+const GOLD_BORDER = 'var(--gold-dim)'
 
 const PILLAR_DISPLAY = {
   production:         'Production',
@@ -26,17 +26,17 @@ function fmtPrize(dollars) {
 function DealFitBadge({ prize }) {
   if (!prize) return null
   if (prize >= 50_000_000) return (
-    <span className="font-mono" style={{ fontSize: 10, padding: '3px 8px', background: '#431407', border: '1px solid #c2410c', color: '#fb923c' }}>
+    <span className="font-mono" style={{ fontSize: 10, padding: '3px 8px', background: 'var(--ops-bg)', border: '1px solid var(--ops-border)', color: 'var(--ops-light)' }}>
       ENTERPRISE
     </span>
   )
   if (prize >= 5_000_000) return (
-    <span className="font-mono" style={{ fontSize: 10, padding: '3px 8px', background: '#052e16', border: '1px solid #14532d', color: '#22c55e' }}>
+    <span className="font-mono" style={{ fontSize: 10, padding: '3px 8px', background: 'var(--positive-bg)', border: '1px solid var(--positive-border)', color: 'var(--positive)' }}>
       SWEET SPOT
     </span>
   )
   return (
-    <span className="font-mono" style={{ fontSize: 10, padding: '3px 8px', background: '#111418', border: '1px solid #1e2530', color: '#6b7280' }}>
+    <span className="font-mono" style={{ fontSize: 10, padding: '3px 8px', background: 'var(--card)', border: '1px solid var(--border)', color: 'var(--text-soft)' }}>
       SMALL
     </span>
   )
@@ -49,10 +49,10 @@ function SizeOfPrize({ prospect }) {
   if (!prize && !breakdown) {
     return (
       <div className="card p-4 mb-4">
-        <div className="font-mono text-xs uppercase tracking-widest mb-2" style={{ color: '#4a5a70' }}>
+        <div className="font-mono text-xs uppercase tracking-widest mb-2" style={{ color: 'var(--text-muted)' }}>
           Size of Prize
         </div>
-        <div className="font-mono text-xs" style={{ color: '#2d3a4d' }}>
+        <div className="font-mono text-xs" style={{ color: 'var(--border-strong)' }}>
           Run enrichment to calculate estimated impact.
         </div>
       </div>
@@ -67,7 +67,7 @@ function SizeOfPrize({ prospect }) {
   return (
     <div className="card p-4 mb-4">
       <div className="flex items-center justify-between mb-4">
-        <div className="font-mono text-xs uppercase tracking-widest" style={{ color: '#4a5a70' }}>
+        <div className="font-mono text-xs uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
           Size of Prize
         </div>
         <DealFitBadge prize={total} />
@@ -75,20 +75,20 @@ function SizeOfPrize({ prospect }) {
 
       {/* Big number + confidence */}
       <div className="mb-4">
-        <div className="font-mono text-xs mb-1" style={{ color: '#4a5a70' }}>ESTIMATED PROBLEM IMPACT</div>
+        <div className="font-mono text-xs mb-1" style={{ color: 'var(--text-muted)' }}>ESTIMATED PROBLEM IMPACT</div>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap' }}>
           <div className="font-mono font-bold" style={{
             fontSize: 36,
-            color: total >= 50_000_000 ? '#fb923c' : total >= 5_000_000 ? '#22c55e' : '#8fa3bf',
+            color: total >= 50_000_000 ? 'var(--ops-light)' : total >= 5_000_000 ? 'var(--positive)' : 'var(--text-secondary)',
             lineHeight: 1,
           }}>
             {fmtPrize(total) || '$0'}
           </div>
           {breakdown?.confidence_label && (
             <div className="font-mono text-xs" style={{
-              color: breakdown.confidence === 'high' ? '#22c55e'
-                   : breakdown.confidence === 'moderate' ? '#eab308'
-                   : '#6b7280',
+              color: breakdown.confidence === 'high' ? 'var(--positive)'
+                   : breakdown.confidence === 'moderate' ? 'var(--caution)'
+                   : 'var(--text-soft)',
             }}>
               {breakdown.confidence_label}
             </div>
@@ -99,23 +99,23 @@ function SizeOfPrize({ prospect }) {
       {/* Breakdown by pillar */}
       {Object.keys(pillars).length > 0 && (
         <div className="mb-4">
-          <div className="font-mono text-xs mb-2" style={{ color: '#4a5a70' }}>BREAKDOWN BY PILLAR</div>
+          <div className="font-mono text-xs mb-2" style={{ color: 'var(--text-muted)' }}>BREAKDOWN BY PILLAR</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {Object.entries(pillars)
               .sort((a, b) => b[1] - a[1])
               .map(([pillar, value]) => (
                 <div key={pillar} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <div className="font-mono text-xs" style={{ color: '#8fa3bf', width: 140, flexShrink: 0 }}>
+                  <div className="font-mono text-xs" style={{ color: 'var(--text-secondary)', width: 140, flexShrink: 0 }}>
                     {PILLAR_DISPLAY[pillar] || pillar}
                   </div>
-                  <div style={{ flex: 1, height: 6, background: '#1e2530', position: 'relative' }}>
+                  <div style={{ flex: 1, height: 6, background: 'var(--border)', position: 'relative' }}>
                     <div style={{
                       position: 'absolute', top: 0, left: 0, bottom: 0,
                       width: `${Math.round((value / maxPillar) * 100)}%`,
-                      background: '#1e6fd4',
+                      background: 'var(--accent)',
                     }} />
                   </div>
-                  <div className="font-mono text-xs" style={{ color: '#e2e8f0', width: 60, textAlign: 'right', flexShrink: 0 }}>
+                  <div className="font-mono text-xs" style={{ color: 'var(--text-primary)', width: 60, textAlign: 'right', flexShrink: 0 }}>
                     {fmtPrize(value)}
                   </div>
                 </div>
@@ -127,18 +127,18 @@ function SizeOfPrize({ prospect }) {
       {/* Top 3 contributors */}
       {top3.length > 0 && (
         <div className="mb-3">
-          <div className="font-mono text-xs mb-2" style={{ color: '#4a5a70' }}>TOP CONTRIBUTING SIGNALS</div>
+          <div className="font-mono text-xs mb-2" style={{ color: 'var(--text-muted)' }}>TOP CONTRIBUTING SIGNALS</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
             {top3.map((s, i) => (
-              <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: '6px 8px', background: '#0d1017', border: '1px solid #1e2530' }}>
-                <div className="font-mono text-xs" style={{ color: '#22c55e', flexShrink: 0 }}>
+              <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: '6px 8px', background: 'var(--surface)', border: '1px solid var(--border)' }}>
+                <div className="font-mono text-xs" style={{ color: 'var(--positive)', flexShrink: 0 }}>
                   {fmtPrize(s.value)}
                 </div>
                 <div style={{ flex: 1 }}>
-                  <div className="font-mono text-xs" style={{ color: '#4a5a70' }}>
+                  <div className="font-mono text-xs" style={{ color: 'var(--text-muted)' }}>
                     {PILLAR_DISPLAY[s.pillar] || s.pillar}
                   </div>
-                  <div className="text-xs" style={{ color: '#8fa3bf' }}>{s.summary}</div>
+                  <div className="text-xs" style={{ color: 'var(--text-secondary)' }}>{s.summary}</div>
                 </div>
               </div>
             ))}
@@ -150,13 +150,13 @@ function SizeOfPrize({ prospect }) {
       {prospect?.prize_ai_assessment && (
         <div className="mb-3" style={{ padding: '8px 10px', background: GOLD_BG, border: `1px solid ${GOLD_BORDER}` }}>
           <div className="font-mono text-xs mb-1" style={{ color: GOLD }}>◆ AI ASSESSMENT</div>
-          <div className="text-xs" style={{ color: '#c9a84c', lineHeight: 1.5 }}>
+          <div className="text-xs" style={{ color: 'var(--gold)', lineHeight: 1.5 }}>
             {prospect.prize_ai_assessment}
           </div>
         </div>
       )}
 
-      <div className="font-mono text-xs" style={{ color: '#2d3a4d', borderTop: '1px solid #1e2530', paddingTop: 8 }}>
+      <div className="font-mono text-xs" style={{ color: 'var(--border-strong)', borderTop: '1px solid var(--border)', paddingTop: 8 }}>
         Estimates based on industry heuristics. Not financial advice.
       </div>
     </div>
@@ -278,21 +278,21 @@ function RadarChart({ signals }) {
             key={i}
             points={pts}
             fill="none"
-            stroke="#1e2530"
+            stroke="var(--border)"
             strokeWidth={i === gridPaths.length - 1 ? 1.5 : 0.5}
           />
         ))}
 
         {/* Axis lines */}
         {axes.map((pt, i) => (
-          <line key={i} x1={cx} y1={cy} x2={pt.x} y2={pt.y} stroke="#1e2530" strokeWidth={0.5} />
+          <line key={i} x1={cx} y1={cy} x2={pt.x} y2={pt.y} stroke="var(--border)" strokeWidth={0.5} />
         ))}
 
         {/* Data polygon fill */}
         <polygon
           points={dataPath}
           fill="rgba(30, 111, 212, 0.15)"
-          stroke="#1e6fd4"
+          stroke="var(--accent)"
           strokeWidth={2}
         />
 
@@ -303,15 +303,15 @@ function RadarChart({ signals }) {
             cx={pt.x}
             cy={pt.y}
             r={3}
-            fill={PILLAR_COLORS[PILLAR_KEYS[i]]?.text || '#1e6fd4'}
-            stroke="#0a0c0f"
+            fill={PILLAR_COLORS[PILLAR_KEYS[i]]?.text || 'var(--accent)'}
+            stroke="var(--bg)"
             strokeWidth={1}
           />
         ))}
 
         {/* Labels */}
         {labelPositions.map(({ key, x, y, score }) => {
-          const color = PILLAR_COLORS[key]?.text || '#8fa3bf'
+          const color = PILLAR_COLORS[key]?.text || 'var(--text-secondary)'
           // Determine text-anchor based on position
           let anchor = 'middle'
           if (x < cx - 10) anchor = 'end'
@@ -333,7 +333,7 @@ function RadarChart({ signals }) {
                 x={x}
                 y={y + 6}
                 textAnchor={anchor}
-                fill="#4a5a70"
+                fill="var(--text-muted)"
                 fontSize={8}
                 fontFamily="ui-monospace, monospace"
               >
@@ -347,8 +347,8 @@ function RadarChart({ signals }) {
       {/* Pillar weights legend */}
       <div style={{ marginTop: 16, display: 'flex', flexWrap: 'wrap', gap: '4px 12px', justifyContent: 'center' }}>
         {PILLAR_KEYS.map(key => (
-          <span key={key} className="font-mono" style={{ fontSize: 9, color: '#4a5a70' }}>
-            <span style={{ color: PILLAR_COLORS[key]?.text || '#8fa3bf' }}>
+          <span key={key} className="font-mono" style={{ fontSize: 9, color: 'var(--text-muted)' }}>
+            <span style={{ color: PILLAR_COLORS[key]?.text || 'var(--text-secondary)' }}>
               {PILLAR_LABELS[key]}
             </span>
             {' '}{PILLAR_WEIGHTS[key]}
@@ -369,7 +369,7 @@ function SourceBadge({ signal }) {
     <span className="flex gap-1 flex-wrap mt-0.5">
       {!isAI && (
         <span className="font-mono text-xs px-1 py-0.5 leading-none"
-          style={{ background: '#111c2b', border: '1px solid #1e3a5f', color: '#4a8fbf', fontSize: 9 }}>
+          style={{ background: 'var(--accent-bg)', border: '1px solid var(--accent-border)', color: 'var(--accent-soft-text)', fontSize: 9 }}>
           RULE
         </span>
       )}
@@ -387,7 +387,7 @@ function SourceBadge({ signal }) {
       )}
       {isDisputedByAI && (
         <span className="font-mono text-xs px-1 py-0.5 leading-none"
-          style={{ background: '#1f0808', border: '1px solid #7f1d1d', color: '#ef4444', fontSize: 9 }}>
+          style={{ background: 'var(--risk-bg)', border: '1px solid var(--risk-border)', color: 'var(--risk)', fontSize: 9 }}>
           AI DISPUTED
         </span>
       )}
@@ -404,21 +404,20 @@ function StatusStepper({ current, onChangeStatus }) {
       {STATUS_STEPS.map((step, i) => {
         const isCurrent = step.value === current
         const isCompleted = i < currentIdx
-        const isFuture = i > currentIdx
 
-        let bg = '#111418'
-        let color = '#4a5a70'
-        let borderColor = '#1e2530'
+        let bg = 'var(--card)'
+        let color = 'var(--text-muted)'
+        let borderColor = 'var(--border)'
         let icon = null
 
         if (isCurrent) {
-          bg = '#0a1e3d'
-          color = '#e2e8f0'
-          borderColor = '#1e6fd4'
+          bg = 'var(--accent-bg)'
+          color = 'var(--text-primary)'
+          borderColor = 'var(--accent)'
         } else if (isCompleted) {
-          bg = '#052e16'
-          color = '#22c55e'
-          borderColor = '#14532d'
+          bg = 'var(--positive-bg)'
+          color = 'var(--positive)'
+          borderColor = 'var(--positive-border)'
           icon = '\u2713'
         }
 
@@ -443,7 +442,7 @@ function StatusStepper({ current, onChangeStatus }) {
               <div style={{
                 width: 20,
                 height: 1,
-                background: isCompleted ? '#14532d' : '#1e2530',
+                background: isCompleted ? 'var(--positive-border)' : 'var(--border)',
               }} />
             )}
           </div>
@@ -768,18 +767,18 @@ export default function DeepIntelligence() {
         placeholder="Search company or ticker..."
         className="w-full font-mono text-sm px-4 py-3"
         style={{
-          background: '#0d1017',
-          border: '1px solid #1e2530',
-          color: '#e2e8f0',
+          background: 'var(--surface)',
+          border: '1px solid var(--border)',
+          color: 'var(--text-primary)',
           outline: 'none',
         }}
-        onFocus={e => { e.currentTarget.style.borderColor = '#1e6fd4' }}
-        onBlur={e => { setTimeout(() => { e.currentTarget.style.borderColor = '#1e2530' }, 200) }}
+        onFocus={e => { e.currentTarget.style.borderColor = 'var(--accent)' }}
+        onBlur={e => { setTimeout(() => { e.currentTarget.style.borderColor = 'var(--border)' }, 200) }}
       />
       {searching && (
         <div className="font-mono text-xs" style={{
           position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)',
-          color: '#4a5a70',
+          color: 'var(--text-muted)',
         }}>
           searching...
         </div>
@@ -793,8 +792,8 @@ export default function DeepIntelligence() {
           left: 0,
           right: 0,
           zIndex: 50,
-          background: '#111418',
-          border: '1px solid #1e2530',
+          background: 'var(--card)',
+          border: '1px solid var(--border)',
           borderTop: 'none',
           maxHeight: 320,
           overflowY: 'auto',
@@ -803,8 +802,8 @@ export default function DeepIntelligence() {
             <div
               key={r.id}
               className="px-4 py-2.5 cursor-pointer transition-all"
-              style={{ borderBottom: '1px solid #1e2530' }}
-              onMouseEnter={e => { e.currentTarget.style.background = '#161b24' }}
+              style={{ borderBottom: '1px solid var(--border)' }}
+              onMouseEnter={e => { e.currentTarget.style.background = 'var(--card-hover)' }}
               onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
               onClick={async () => {
                 setQuery('')
@@ -824,13 +823,13 @@ export default function DeepIntelligence() {
               }}
             >
               <div className="flex items-center gap-3">
-                <span className="font-mono text-sm font-bold" style={{ color: '#1e6fd4' }}>
+                <span className="font-mono text-sm font-bold" style={{ color: 'var(--accent)' }}>
                   {r.ticker}
                 </span>
-                <span className="text-sm" style={{ color: '#e2e8f0' }}>
+                <span className="text-sm" style={{ color: 'var(--text-primary)' }}>
                   {r.company_name}
                 </span>
-                <span className="font-mono text-xs" style={{ color: '#4a5a70' }}>
+                <span className="font-mono text-xs" style={{ color: 'var(--text-muted)' }}>
                   {r.gics_sector}
                 </span>
               </div>
@@ -846,12 +845,12 @@ export default function DeepIntelligence() {
           left: 0,
           right: 0,
           zIndex: 50,
-          background: '#111418',
-          border: '1px solid #1e2530',
+          background: 'var(--card)',
+          border: '1px solid var(--border)',
           borderTop: 'none',
           padding: '12px 16px',
         }}>
-          <span className="font-mono text-xs" style={{ color: '#4a5a70' }}>No results found</span>
+          <span className="font-mono text-xs" style={{ color: 'var(--text-muted)' }}>No results found</span>
         </div>
       )}
     </div>
@@ -861,9 +860,9 @@ export default function DeepIntelligence() {
   const toastEl = toast && (
     <div className="mb-4 px-4 py-2 text-sm font-mono"
       style={{
-        background: toast.ok ? '#052e16' : '#1f0808',
-        border: `1px solid ${toast.ok ? '#14532d' : '#7f1d1d'}`,
-        color: toast.ok ? '#22c55e' : '#ef4444',
+        background: toast.ok ? 'var(--positive-bg)' : 'var(--risk-bg)',
+        border: `1px solid ${toast.ok ? 'var(--positive-border)' : 'var(--risk-border)'}`,
+        color: toast.ok ? 'var(--positive)' : 'var(--risk)',
       }}>
       {toast.msg}
     </div>
@@ -878,10 +877,10 @@ export default function DeepIntelligence() {
           <div className="font-mono text-xs tracking-widest uppercase mb-1" style={{ color: GOLD_BORDER }}>
             DELTA PROSPECT SYSTEM
           </div>
-          <h1 className="text-2xl font-semibold" style={{ color: '#e2e8f0', margin: 0 }}>
+          <h1 className="text-2xl font-semibold" style={{ color: 'var(--text-primary)', margin: 0 }}>
             Deep Intelligence
           </h1>
-          <div className="font-mono text-xs mt-1" style={{ color: '#4a5a70' }}>
+          <div className="font-mono text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
             Select a company to view full prospect profile and pressure analysis
           </div>
         </div>
@@ -893,32 +892,32 @@ export default function DeepIntelligence() {
 
         {/* Top prospects */}
         <div className="mb-4">
-          <div className="font-mono text-xs uppercase tracking-widest mb-3" style={{ color: '#4a5a70' }}>
+          <div className="font-mono text-xs uppercase tracking-widest mb-3" style={{ color: 'var(--text-muted)' }}>
             Top Prospects by Score
           </div>
           {topLoading ? (
-            <div className="font-mono text-xs" style={{ color: '#4a5a70' }}>Loading top prospects...</div>
+            <div className="font-mono text-xs" style={{ color: 'var(--text-muted)' }}>Loading top prospects...</div>
           ) : topProspects.length === 0 ? (
-            <div className="font-mono text-xs" style={{ color: '#4a5a70' }}>
+            <div className="font-mono text-xs" style={{ color: 'var(--text-muted)' }}>
               No prospects found. Run ASX refresh and enrichment first.
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {topProspects.map(p => {
                 const score = p.prospect_score ? Number(p.prospect_score) : 0
-                const scoreColor = score >= 15 ? '#22c55e' : score >= 8 ? '#eab308' : '#3b82f6'
+                const scoreColor = score >= 15 ? 'var(--positive)' : score >= 8 ? 'var(--caution)' : 'var(--info)'
                 return (
                   <div
                     key={p.prospect_id}
                     className="card p-4 cursor-pointer transition-all"
                     style={{ borderLeft: `3px solid ${scoreColor}` }}
                     onClick={() => navigate(`/deep-intelligence/${p.prospect_id}`)}
-                    onMouseEnter={e => { e.currentTarget.style.background = '#161b24' }}
-                    onMouseLeave={e => { e.currentTarget.style.background = '#111418' }}
+                    onMouseEnter={e => { e.currentTarget.style.background = 'var(--card-hover)' }}
+                    onMouseLeave={e => { e.currentTarget.style.background = 'var(--card)' }}
                   >
                     <div className="flex items-center justify-between mb-2">
                       <div className="flex items-center gap-2">
-                        <span className="font-mono text-sm font-bold" style={{ color: '#1e6fd4' }}>
+                        <span className="font-mono text-sm font-bold" style={{ color: 'var(--accent)' }}>
                           {p.ticker}
                         </span>
                         {p.lead_tier && <LeadTierBadge tier={p.lead_tier} />}
@@ -927,8 +926,8 @@ export default function DeepIntelligence() {
                         {score ? score.toFixed(1) : '\u2014'}
                       </span>
                     </div>
-                    <div className="text-sm mb-1" style={{ color: '#e2e8f0' }}>{p.company_name}</div>
-                    <div className="font-mono text-xs" style={{ color: '#4a5a70' }}>
+                    <div className="text-sm mb-1" style={{ color: 'var(--text-primary)' }}>{p.company_name}</div>
+                    <div className="font-mono text-xs" style={{ color: 'var(--text-muted)' }}>
                       {p.gics_sector}
                       {p.signal_count != null && <span> · {p.total_signals} signals</span>}
                     </div>
@@ -948,11 +947,11 @@ export default function DeepIntelligence() {
     return (
       <div className="p-6 max-w-5xl">
         <button onClick={() => navigate('/deep-intelligence')} className="font-mono text-xs mb-4 flex items-center gap-1"
-          style={{ background: 'none', border: 'none', color: '#8fa3bf', cursor: 'pointer' }}>
+          style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer' }}>
           ← Back to Deep Intelligence
         </button>
         {searchBar}
-        <div className="font-mono text-xs" style={{ color: '#4a5a70' }}>Loading prospect...</div>
+        <div className="font-mono text-xs" style={{ color: 'var(--text-muted)' }}>Loading prospect...</div>
       </div>
     )
   }
@@ -961,14 +960,14 @@ export default function DeepIntelligence() {
     return (
       <div className="p-6 max-w-5xl">
         <button onClick={() => navigate('/deep-intelligence')} className="font-mono text-xs mb-4 flex items-center gap-1"
-          style={{ background: 'none', border: 'none', color: '#8fa3bf', cursor: 'pointer' }}>
+          style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer' }}>
           ← Back to Deep Intelligence
         </button>
         {searchBar}
-        <div className="card p-6 text-center" style={{ borderLeft: '3px solid #ef4444' }}>
-          <div className="font-mono text-sm mb-2" style={{ color: '#ef4444' }}>{error}</div>
+        <div className="card p-6 text-center" style={{ borderLeft: '3px solid var(--risk)' }}>
+          <div className="font-mono text-sm mb-2" style={{ color: 'var(--risk)' }}>{error}</div>
           <button onClick={loadProspect} className="font-mono text-xs px-4 py-2"
-            style={{ background: '#1e6fd4', color: '#fff', border: 'none', cursor: 'pointer' }}>
+            style={{ background: 'var(--accent)', color: 'var(--on-accent)', border: 'none', cursor: 'pointer' }}>
             Retry
           </button>
         </div>
@@ -980,11 +979,11 @@ export default function DeepIntelligence() {
     return (
       <div className="p-6 max-w-5xl">
         <button onClick={() => navigate('/deep-intelligence')} className="font-mono text-xs mb-4 flex items-center gap-1"
-          style={{ background: 'none', border: 'none', color: '#8fa3bf', cursor: 'pointer' }}>
+          style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer' }}>
           ← Back to Deep Intelligence
         </button>
         {searchBar}
-        <div className="font-mono text-xs" style={{ color: '#ef4444' }}>Prospect not found.</div>
+        <div className="font-mono text-xs" style={{ color: 'var(--risk)' }}>Prospect not found.</div>
       </div>
     )
   }
@@ -993,7 +992,7 @@ export default function DeepIntelligence() {
     <div className="p-6 max-w-5xl">
       {/* Back button */}
       <button onClick={() => navigate('/deep-intelligence')} className="font-mono text-xs mb-4 flex items-center gap-1"
-        style={{ background: 'none', border: 'none', color: '#8fa3bf', cursor: 'pointer' }}>
+        style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer' }}>
         ← Back to Deep Intelligence
       </button>
 
@@ -1005,78 +1004,78 @@ export default function DeepIntelligence() {
 
       {/* DQ Banner — shown only when status is disqualified */}
       {prospect.status === 'disqualified' && (
-        <div className="mb-4" style={{ border: '1px solid #7f1d1d' }}>
+        <div className="mb-4" style={{ border: '1px solid var(--risk-border)' }}>
           {/* Hazard stripe bar */}
           <div style={{
-            background: 'repeating-linear-gradient(45deg, #1a0000, #1a0000 14px, #2a0505 14px, #2a0505 28px)',
+            background: 'repeating-linear-gradient(45deg, var(--risk-bg), var(--risk-bg) 14px, var(--risk-border) 14px, var(--risk-border) 28px)',
             padding: '10px 20px',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             gap: 12,
           }}>
-            <span style={{ color: '#ef4444', fontSize: 20, lineHeight: 1 }}>⊘</span>
+            <span style={{ color: 'var(--risk)', fontSize: 20, lineHeight: 1 }}>⊘</span>
             <span className="font-mono font-bold" style={{
-              color: '#ef4444',
+              color: 'var(--risk)',
               fontSize: 13,
               letterSpacing: '0.2em',
               textShadow: '0 0 12px rgba(239,68,68,0.5)',
             }}>
               DISQUALIFIED — NOT A PROSPECT
             </span>
-            <span style={{ color: '#ef4444', fontSize: 20, lineHeight: 1 }}>⊘</span>
+            <span style={{ color: 'var(--risk)', fontSize: 20, lineHeight: 1 }}>⊘</span>
           </div>
           {/* DQ reason */}
           {prospect.dq_reason && (
-            <div style={{ background: '#110202', padding: '10px 20px', borderTop: '1px solid #3b0808' }}>
-              <span className="font-mono" style={{ color: '#4a5a70', fontSize: 10, letterSpacing: '0.12em', marginRight: 8 }}>DQ REASON</span>
-              <span className="font-mono" style={{ color: '#cd6464', fontSize: 11 }}>{prospect.dq_reason}</span>
+            <div style={{ background: 'var(--risk-bg)', padding: '10px 20px', borderTop: '1px solid var(--risk-bg)' }}>
+              <span className="font-mono" style={{ color: 'var(--text-muted)', fontSize: 10, letterSpacing: '0.12em', marginRight: 8 }}>DQ REASON</span>
+              <span className="font-mono" style={{ color: 'var(--risk-light)', fontSize: 11 }}>{prospect.dq_reason}</span>
             </div>
           )}
         </div>
       )}
 
       {/* 1. Header card */}
-      <div className="card p-5 mb-4" style={prospect.status === 'disqualified' ? { borderColor: '#3b0808', opacity: 0.75 } : {}}>
+      <div className="card p-5 mb-4" style={prospect.status === 'disqualified' ? { borderColor: 'var(--risk-bg)', opacity: 0.75 } : {}}>
         <div className="flex items-start justify-between flex-wrap gap-4">
           <div>
             <div className="flex items-center gap-3 mb-1 flex-wrap">
-              <span className="font-mono text-2xl font-bold" style={{ color: '#1e6fd4' }}>{prospect.ticker}</span>
+              <span className="font-mono text-2xl font-bold" style={{ color: 'var(--accent)' }}>{prospect.ticker}</span>
               <button
                 onClick={toggleWatchlist}
                 title={isWatchlisted ? 'Remove from watchlist' : 'Add to watchlist'}
                 style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px', lineHeight: 1 }}
               >
-                <span style={{ fontSize: 22, color: isWatchlisted ? GOLD : '#555', transition: 'color 0.15s' }}>
+                <span style={{ fontSize: 22, color: isWatchlisted ? GOLD : 'var(--text-muted)', transition: 'color 0.15s' }}>
                   {isWatchlisted ? '\u2605' : '\u2606'}
                 </span>
               </button>
               {prospect.lead_tier && <LeadTierBadge tier={prospect.lead_tier} />}
               <StatusBadge status={prospect.status} />
             </div>
-            <div className="text-lg font-semibold mb-1" style={{ color: '#e2e8f0' }}>{prospect.company_name}</div>
-            <div className="font-mono text-xs" style={{ color: '#8fa3bf' }}>
+            <div className="text-lg font-semibold mb-1" style={{ color: 'var(--text-primary)' }}>{prospect.company_name}</div>
+            <div className="font-mono text-xs" style={{ color: 'var(--text-secondary)' }}>
               {prospect.gics_sector}
               {prospect.gics_industry_group && <span> · {prospect.gics_industry_group}</span>}
               {prospect.market_cap_aud && <span> · {fmtMarketCap(prospect.market_cap_aud)} AUD</span>}
               {prospect.website && (
                 <a href={prospect.website.startsWith('http') ? prospect.website : `https://${prospect.website}`}
                   target="_blank" rel="noopener noreferrer"
-                  style={{ color: '#1e6fd4', marginLeft: 8 }}>
+                  style={{ color: 'var(--accent)', marginLeft: 8 }}>
                   {prospect.website} ↗
                 </a>
               )}
             </div>
           </div>
           <div className="text-right">
-            <div className="font-mono text-xs mb-1" style={{ color: '#4a5a70' }}>PROSPECT SCORE</div>
+            <div className="font-mono text-xs mb-1" style={{ color: 'var(--text-muted)' }}>PROSPECT SCORE</div>
             <div className="font-mono text-3xl font-bold" style={{
-              color: prospect.prospect_score >= 15 ? '#22c55e' : prospect.prospect_score >= 8 ? '#eab308' : '#3b82f6',
+              color: prospect.prospect_score >= 15 ? 'var(--positive)' : prospect.prospect_score >= 8 ? 'var(--caution)' : 'var(--info)',
             }}>
               {prospect.prospect_score ? Number(prospect.prospect_score).toFixed(1) : '\u2014'}
             </div>
             {prospect.likelihood_score != null && (
-              <div className="font-mono text-xs mt-1" style={{ color: '#8fa3bf' }}>
+              <div className="font-mono text-xs mt-1" style={{ color: 'var(--text-secondary)' }}>
                 likelihood {prospect.likelihood_score}/10
               </div>
             )}
@@ -1086,18 +1085,18 @@ export default function DeepIntelligence() {
             <div className="flex gap-2 mt-2">
               <button onClick={copyBrief}
                 className="font-mono text-xs px-3 py-1.5"
-                style={{ background: 'none', border: '1px solid #1e2530', color: '#8fa3bf', cursor: 'pointer' }}
-                onMouseEnter={e => { e.currentTarget.style.borderColor = '#2d3a4d'; e.currentTarget.style.color = '#e2e8f0' }}
-                onMouseLeave={e => { e.currentTarget.style.borderColor = '#1e2530'; e.currentTarget.style.color = '#8fa3bf' }}
+                style={{ background: 'none', border: '1px solid var(--border)', color: 'var(--text-secondary)', cursor: 'pointer' }}
+                onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--border-strong)'; e.currentTarget.style.color = 'var(--text-primary)' }}
+                onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--text-secondary)' }}
               >
                 Copy Brief
               </button>
               {signals.length > 0 && (
                 <button onClick={downloadSources}
                   className="font-mono text-xs px-3 py-1.5"
-                  style={{ background: 'none', border: '1px solid #1e2530', color: '#8fa3bf', cursor: 'pointer' }}
-                  onMouseEnter={e => { e.currentTarget.style.borderColor = '#2d3a4d'; e.currentTarget.style.color = '#e2e8f0' }}
-                  onMouseLeave={e => { e.currentTarget.style.borderColor = '#1e2530'; e.currentTarget.style.color = '#8fa3bf' }}
+                  style={{ background: 'none', border: '1px solid var(--border)', color: 'var(--text-secondary)', cursor: 'pointer' }}
+                  onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--border-strong)'; e.currentTarget.style.color = 'var(--text-primary)' }}
+                  onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--text-secondary)' }}
                 >
                   Download Sources
                 </button>
@@ -1109,7 +1108,7 @@ export default function DeepIntelligence() {
 
       {/* 2. Status workflow stepper */}
       <div className="card p-4 mb-4">
-        <div className="font-mono text-xs uppercase tracking-widest mb-3" style={{ color: '#4a5a70' }}>
+        <div className="font-mono text-xs uppercase tracking-widest mb-3" style={{ color: 'var(--text-muted)' }}>
           Status Workflow
         </div>
         <StatusStepper current={prospect.status} onChangeStatus={updateStatus} />
@@ -1119,7 +1118,7 @@ export default function DeepIntelligence() {
         {/* 3. Strategic Profile */}
         <div className="card p-4">
           <div className="flex items-center justify-between mb-3">
-            <div className="font-mono text-xs uppercase tracking-widest" style={{ color: '#4a5a70' }}>
+            <div className="font-mono text-xs uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
               Strategic Profile
             </div>
             {hasAISignals && (
@@ -1131,24 +1130,24 @@ export default function DeepIntelligence() {
           </div>
           {prospect.strategic_direction && (
             <div className="mb-3">
-              <div className="font-mono text-xs mb-1" style={{ color: '#4a5a70' }}>DIRECTION</div>
-              <div className="text-sm" style={{ color: '#e2e8f0' }}>{prospect.strategic_direction}</div>
+              <div className="font-mono text-xs mb-1" style={{ color: 'var(--text-muted)' }}>DIRECTION</div>
+              <div className="text-sm" style={{ color: 'var(--text-primary)' }}>{prospect.strategic_direction}</div>
             </div>
           )}
           {prospect.primary_tailwind && (
             <div className="mb-3">
-              <div className="font-mono text-xs mb-1" style={{ color: '#22c55e' }}>{'\u2191'} TAILWIND</div>
-              <div className="text-sm" style={{ color: '#e2e8f0' }}>{prospect.primary_tailwind}</div>
+              <div className="font-mono text-xs mb-1" style={{ color: 'var(--positive)' }}>{'\u2191'} TAILWIND</div>
+              <div className="text-sm" style={{ color: 'var(--text-primary)' }}>{prospect.primary_tailwind}</div>
             </div>
           )}
           {prospect.primary_headwind && (
             <div>
-              <div className="font-mono text-xs mb-1" style={{ color: '#ef4444' }}>{'\u2193'} HEADWIND</div>
-              <div className="text-sm" style={{ color: '#e2e8f0' }}>{prospect.primary_headwind}</div>
+              <div className="font-mono text-xs mb-1" style={{ color: 'var(--risk)' }}>{'\u2193'} HEADWIND</div>
+              <div className="text-sm" style={{ color: 'var(--text-primary)' }}>{prospect.primary_headwind}</div>
             </div>
           )}
           {!prospect.strategic_direction && !prospect.primary_tailwind && !prospect.primary_headwind && (
-            <div className="font-mono text-xs" style={{ color: '#4a5a70' }}>
+            <div className="font-mono text-xs" style={{ color: 'var(--text-muted)' }}>
               No strategic profile yet. Run enrichment to generate.
             </div>
           )}
@@ -1156,11 +1155,11 @@ export default function DeepIntelligence() {
 
         {/* 4. Radar Chart */}
         <div className="card p-4">
-          <div className="font-mono text-xs uppercase tracking-widest mb-3" style={{ color: '#4a5a70' }}>
+          <div className="font-mono text-xs uppercase tracking-widest mb-3" style={{ color: 'var(--text-muted)' }}>
             Pillar Analysis
           </div>
           {signals.length === 0 ? (
-            <div className="font-mono text-xs text-center py-8" style={{ color: '#4a5a70' }}>
+            <div className="font-mono text-xs text-center py-8" style={{ color: 'var(--text-muted)' }}>
               No signals detected. Run enrichment to populate the radar chart.
             </div>
           ) : (
@@ -1174,7 +1173,7 @@ export default function DeepIntelligence() {
 
       {/* 6. Actions */}
       <div className="card p-4 mb-4">
-        <div className="font-mono text-xs uppercase tracking-widest mb-3" style={{ color: '#4a5a70' }}>
+        <div className="font-mono text-xs uppercase tracking-widest mb-3" style={{ color: 'var(--text-muted)' }}>
           Actions
         </div>
         <div className="flex flex-wrap gap-2">
@@ -1182,9 +1181,9 @@ export default function DeepIntelligence() {
           <button onClick={triggerEnrich} disabled={enriching}
             className="font-mono text-xs px-4 py-2"
             style={{
-              background: enriching ? '#1e2530' : '#1558a8',
-              color: enriching ? '#4a5a70' : '#e2e8f0',
-              border: '1px solid #1e3a5f',
+              background: enriching ? 'var(--border)' : 'var(--accent-dim)',
+              color: enriching ? 'var(--text-muted)' : 'var(--text-primary)',
+              border: '1px solid var(--accent-border)',
               cursor: enriching ? 'not-allowed' : 'pointer',
             }}>
             {enriching ? 'Enriching...' : '\u27F3 Enrich'}
@@ -1195,9 +1194,9 @@ export default function DeepIntelligence() {
             <button onClick={triggerDeepAnalysis} disabled={deepAnalysing}
               className="font-mono text-xs px-4 py-2"
               style={{
-                background: deepAnalysing ? '#1e2530' : GOLD_BG,
-                color: deepAnalysing ? '#4a5a70' : GOLD,
-                border: `1px solid ${deepAnalysing ? '#1e2530' : GOLD_BORDER}`,
+                background: deepAnalysing ? 'var(--border)' : GOLD_BG,
+                color: deepAnalysing ? 'var(--text-muted)' : GOLD,
+                border: `1px solid ${deepAnalysing ? 'var(--border)' : GOLD_BORDER}`,
                 cursor: deepAnalysing ? 'not-allowed' : 'pointer',
                 fontWeight: 600,
               }}>
@@ -1210,8 +1209,8 @@ export default function DeepIntelligence() {
               className="font-mono text-xs px-4 py-2"
               style={{
                 background: 'none',
-                color: '#2d3a4d',
-                border: '1px solid #1e2530',
+                color: 'var(--border-strong)',
+                border: '1px solid var(--border)',
                 cursor: 'not-allowed',
               }}>
               {'\u25C6'} Deep Analysis
@@ -1226,24 +1225,24 @@ export default function DeepIntelligence() {
         )}
 
         {deepJob?.status === 'running' && (
-          <div className="mt-3 p-3" style={{ background: '#0d1017', border: `1px solid ${GOLD_BORDER}` }}>
+          <div className="mt-3 p-3" style={{ background: 'var(--surface)', border: `1px solid ${GOLD_BORDER}` }}>
             <div className="flex items-center justify-between gap-3 mb-2">
               <div className="font-mono text-xs" style={{ color: GOLD }}>
                 ◆ {deepJob.message || 'Running deep analysis'}
               </div>
-              <div className="font-mono text-xs" style={{ color: '#8fa3bf' }}>
+              <div className="font-mono text-xs" style={{ color: 'var(--text-secondary)' }}>
                 {deepJob.progress_pct || 0}%
               </div>
             </div>
-            <div style={{ height: 8, background: '#1e2530', overflow: 'hidden' }}>
+            <div style={{ height: 8, background: 'var(--border)', overflow: 'hidden' }}>
               <div style={{
                 width: `${deepJob.progress_pct || 0}%`,
                 height: '100%',
-                background: 'linear-gradient(90deg, #8B7120 0%, #D4AF37 100%)',
+                background: 'linear-gradient(90deg, var(--gold-dim) 0%, var(--gold) 100%)',
                 transition: 'width 0.3s ease',
               }} />
             </div>
-            <div className="font-mono text-xs mt-2" style={{ color: '#8fa3bf' }}>
+            <div className="font-mono text-xs mt-2" style={{ color: 'var(--text-secondary)' }}>
               {deepJob.stage === 'collecting_documents'
                 ? 'Pulling and cleaning source documents'
                 : deepJob.stage === 'running_ai'
@@ -1256,9 +1255,9 @@ export default function DeepIntelligence() {
         )}
 
         {!deepAvailable && (
-          <div className="font-mono text-xs mt-2" style={{ color: '#2d3a4d' }}>
+          <div className="font-mono text-xs mt-2" style={{ color: 'var(--border-strong)' }}>
             Configure API key in{' '}
-            <a href="/settings" style={{ color: '#4a5a70', textDecoration: 'underline' }}>Settings</a>
+            <a href="/settings" style={{ color: 'var(--text-muted)', textDecoration: 'underline' }}>Settings</a>
             {' '}to enable Deep Analysis
           </div>
         )}
@@ -1267,7 +1266,7 @@ export default function DeepIntelligence() {
       {/* 7. Extended Deep Analysis output */}
       {(prospect.outreach_hypothesis || prospect.key_pressures || prospect.nd_fit_assessment || prospect.red_flags) && (
         <div className="card mb-4">
-          <div className="px-4 py-3" style={{ borderBottom: '1px solid #1e2530' }}>
+          <div className="px-4 py-3" style={{ borderBottom: '1px solid var(--border)' }}>
             <span className="font-mono text-xs uppercase tracking-widest" style={{ color: GOLD_BORDER }}>
               ◆ Deep Intelligence
             </span>
@@ -1275,44 +1274,44 @@ export default function DeepIntelligence() {
 
           {/* Outreach Hypothesis — most prominent */}
           {prospect.outreach_hypothesis && (
-            <div className="px-4 py-4" style={{ borderBottom: '1px solid #1e2530', background: '#0e1318' }}>
-              <div className="font-mono text-xs uppercase tracking-widest mb-2" style={{ color: '#22c55e' }}>
+            <div className="px-4 py-4" style={{ borderBottom: '1px solid var(--border)', background: 'var(--surface)' }}>
+              <div className="font-mono text-xs uppercase tracking-widest mb-2" style={{ color: 'var(--positive)' }}>
                 OUTREACH HYPOTHESIS
               </div>
-              <div className="text-sm" style={{ color: '#e2e8f0', lineHeight: 1.6, fontStyle: 'italic' }}>
+              <div className="text-sm" style={{ color: 'var(--text-primary)', lineHeight: 1.6, fontStyle: 'italic' }}>
                 "{prospect.outreach_hypothesis}"
               </div>
               <button
                 onClick={() => { navigator.clipboard.writeText(prospect.outreach_hypothesis); }}
                 className="font-mono text-xs px-2 py-1 mt-2"
-                style={{ background: 'none', border: '1px solid #1e2530', color: '#6b7280', cursor: 'pointer' }}
-                onMouseEnter={e => { e.currentTarget.style.color = '#e2e8f0'; e.currentTarget.style.borderColor = '#2d3a4d' }}
-                onMouseLeave={e => { e.currentTarget.style.color = '#6b7280'; e.currentTarget.style.borderColor = '#1e2530' }}
+                style={{ background: 'none', border: '1px solid var(--border)', color: 'var(--text-soft)', cursor: 'pointer' }}
+                onMouseEnter={e => { e.currentTarget.style.color = 'var(--text-primary)'; e.currentTarget.style.borderColor = 'var(--border-strong)' }}
+                onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-soft)'; e.currentTarget.style.borderColor = 'var(--border)' }}
               >
                 Copy
               </button>
             </div>
           )}
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-0" style={{ borderBottom: '1px solid #1e2530' }}>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-0" style={{ borderBottom: '1px solid var(--border)' }}>
             {prospect.key_pressures && (
-              <div className="px-4 py-4" style={{ borderRight: '1px solid #1e2530' }}>
-                <div className="font-mono text-xs uppercase tracking-widest mb-2" style={{ color: '#4a5a70' }}>KEY PRESSURES</div>
-                <div className="text-sm" style={{ color: '#8fa3bf', lineHeight: 1.6 }}>{prospect.key_pressures}</div>
+              <div className="px-4 py-4" style={{ borderRight: '1px solid var(--border)' }}>
+                <div className="font-mono text-xs uppercase tracking-widest mb-2" style={{ color: 'var(--text-muted)' }}>KEY PRESSURES</div>
+                <div className="text-sm" style={{ color: 'var(--text-secondary)', lineHeight: 1.6 }}>{prospect.key_pressures}</div>
               </div>
             )}
             {prospect.nd_fit_assessment && (
               <div className="px-4 py-4">
-                <div className="font-mono text-xs uppercase tracking-widest mb-2" style={{ color: '#4a5a70' }}>NEW DELTA FIT</div>
-                <div className="text-sm" style={{ color: '#8fa3bf', lineHeight: 1.6 }}>{prospect.nd_fit_assessment}</div>
+                <div className="font-mono text-xs uppercase tracking-widest mb-2" style={{ color: 'var(--text-muted)' }}>NEW DELTA FIT</div>
+                <div className="text-sm" style={{ color: 'var(--text-secondary)', lineHeight: 1.6 }}>{prospect.nd_fit_assessment}</div>
               </div>
             )}
           </div>
 
           {prospect.red_flags && prospect.red_flags !== 'null' && (
-            <div className="px-4 py-4" style={{ background: '#140808' }}>
-              <div className="font-mono text-xs uppercase tracking-widest mb-2" style={{ color: '#ef4444' }}>⚠ RED FLAGS</div>
-              <div className="text-sm" style={{ color: '#fca5a5', lineHeight: 1.6 }}>{prospect.red_flags}</div>
+            <div className="px-4 py-4" style={{ background: 'var(--risk-bg)' }}>
+              <div className="font-mono text-xs uppercase tracking-widest mb-2" style={{ color: 'var(--risk)' }}>⚠ RED FLAGS</div>
+              <div className="text-sm" style={{ color: 'var(--risk-light)', lineHeight: 1.6 }}>{prospect.red_flags}</div>
             </div>
           )}
         </div>
@@ -1323,8 +1322,8 @@ export default function DeepIntelligence() {
 
       {/* 9. Pressure Signals table */}
       <div className="card mb-4">
-        <div className="px-4 py-3 flex items-center gap-3" style={{ borderBottom: '1px solid #1e2530' }}>
-          <span className="font-mono text-xs uppercase tracking-widest" style={{ color: '#4a5a70' }}>
+        <div className="px-4 py-3 flex items-center gap-3" style={{ borderBottom: '1px solid var(--border)' }}>
+          <span className="font-mono text-xs uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
             Pressure Signals ({signals.length})
           </span>
           {hasAISignals && (
@@ -1332,16 +1331,16 @@ export default function DeepIntelligence() {
           )}
         </div>
         {signals.length === 0 ? (
-          <div className="px-4 py-6 font-mono text-xs text-center" style={{ color: '#4a5a70' }}>
+          <div className="px-4 py-6 font-mono text-xs text-center" style={{ color: 'var(--text-muted)' }}>
             No signals detected — run enrichment to analyse ASX announcements
           </div>
         ) : (
-          <div style={{ overflowX: 'auto' }}>
-            <table className="w-full" style={{ minWidth: 700 }}>
+          <div className="table-scroll">
+            <table className="w-full sticky-head" style={{ minWidth: 700 }}>
               <thead>
-                <tr style={{ borderBottom: '1px solid #1e2530' }}>
+                <tr style={{ borderBottom: '1px solid var(--border)' }}>
                   {['Pillar', 'Strength', 'Summary', 'Source', 'Confidence', 'Date', ''].map(h => (
-                    <th key={h || 'actions'} className="px-4 py-2.5 text-left font-mono text-xs uppercase" style={{ color: '#4a5a70' }}>{h}</th>
+                    <th key={h || 'actions'} className="px-4 py-2.5 text-left font-mono text-xs uppercase" style={{ color: 'var(--text-muted)' }}>{h}</th>
                   ))}
                 </tr>
               </thead>
@@ -1351,20 +1350,20 @@ export default function DeepIntelligence() {
                   return (
                     <tr key={s.id}
                       style={{
-                        borderBottom: '1px solid #1e2530',
+                        borderBottom: '1px solid var(--border)',
                         opacity: disputed ? 0.45 : 1,
                       }}>
                       <td className="px-4 py-2.5"><PillarBadge type={s.pressure_type} /></td>
                       <td className="px-4 py-2.5"><StrengthBadge strength={s.strength} /></td>
-                      <td className="px-4 py-2.5 text-sm" style={{ color: disputed ? '#6b7280' : '#e2e8f0' }}>
+                      <td className="px-4 py-2.5 text-sm" style={{ color: disputed ? 'var(--text-soft)' : 'var(--text-primary)' }}>
                         <span style={{ textDecoration: disputed ? 'line-through' : 'none' }}>
                           {s.summary}
                         </span>
                         {s.source_title && (
-                          <div className="font-mono text-xs mt-0.5 truncate" style={{ color: '#4a5a70' }}>
+                          <div className="font-mono text-xs mt-0.5 truncate" style={{ color: 'var(--text-muted)' }}>
                             {s.source_url ? (
                               <a href={s.source_url} target="_blank" rel="noopener noreferrer"
-                                style={{ color: '#1e6fd4', textDecoration: 'none' }}
+                                style={{ color: 'var(--accent)', textDecoration: 'none' }}
                                 onMouseEnter={e => { e.currentTarget.style.textDecoration = 'underline' }}
                                 onMouseLeave={e => { e.currentTarget.style.textDecoration = 'none' }}
                                 title={s.source_title}>
@@ -1377,10 +1376,10 @@ export default function DeepIntelligence() {
                       <td className="px-4 py-2.5">
                         <SourceBadge signal={s} />
                       </td>
-                      <td className="px-4 py-2.5 font-mono text-xs" style={{ color: '#8fa3bf' }}>
+                      <td className="px-4 py-2.5 font-mono text-xs" style={{ color: 'var(--text-secondary)' }}>
                         {s.confidence_score ? `${Math.round(s.confidence_score * 100)}%` : '\u2014'}
                       </td>
-                      <td className="px-4 py-2.5 font-mono text-xs" style={{ color: '#4a5a70' }}>
+                      <td className="px-4 py-2.5 font-mono text-xs" style={{ color: 'var(--text-muted)' }}>
                         {s.source_date || '\u2014'}
                       </td>
                       <td className="px-4 py-2.5">
@@ -1390,12 +1389,12 @@ export default function DeepIntelligence() {
                             <a href={s.source_url} target="_blank" rel="noopener noreferrer"
                               title="Open source announcement"
                               className="font-mono text-xs px-1.5 py-0.5"
-                              style={{ color: '#1e6fd4', border: '1px solid #1e2530', cursor: 'pointer', textDecoration: 'none' }}
-                              onMouseEnter={e => { e.currentTarget.style.borderColor = '#1e6fd4' }}
-                              onMouseLeave={e => { e.currentTarget.style.borderColor = '#1e2530' }}
+                              style={{ color: 'var(--accent)', border: '1px solid var(--border)', cursor: 'pointer', textDecoration: 'none' }}
+                              onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--accent)' }}
+                              onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)' }}
                             >↗</a>
                           ) : (
-                            <span className="font-mono text-xs px-1.5 py-0.5" style={{ color: '#2d3a4d', border: '1px solid #1e2530' }} title="Source not available">↗</span>
+                            <span className="font-mono text-xs px-1.5 py-0.5" style={{ color: 'var(--border-strong)', border: '1px solid var(--border)' }} title="Source not available">↗</span>
                           )}
                           {/* Export as PDF */}
                           {s.source_url && !s.source_url.startsWith('claude-deep://') ? (
@@ -1404,12 +1403,12 @@ export default function DeepIntelligence() {
                               disabled={pdfLoading === s.id}
                               title="Export source as PDF"
                               className="font-mono text-xs px-1.5 py-0.5"
-                              style={{ color: pdfLoading === s.id ? '#4a5a70' : '#8fa3bf', border: '1px solid #1e2530', background: 'none', cursor: pdfLoading === s.id ? 'wait' : 'pointer' }}
-                              onMouseEnter={e => { if (pdfLoading !== s.id) e.currentTarget.style.borderColor = '#8fa3bf' }}
-                              onMouseLeave={e => { e.currentTarget.style.borderColor = '#1e2530' }}
+                              style={{ color: pdfLoading === s.id ? 'var(--text-muted)' : 'var(--text-secondary)', border: '1px solid var(--border)', background: 'none', cursor: pdfLoading === s.id ? 'wait' : 'pointer' }}
+                              onMouseEnter={e => { if (pdfLoading !== s.id) e.currentTarget.style.borderColor = 'var(--text-secondary)' }}
+                              onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)' }}
                             >{pdfLoading === s.id ? '...' : 'PDF'}</button>
                           ) : (
-                            <span className="font-mono text-xs px-1.5 py-0.5" style={{ color: '#2d3a4d', border: '1px solid #1e2530' }} title="No source URL">PDF</span>
+                            <span className="font-mono text-xs px-1.5 py-0.5" style={{ color: 'var(--border-strong)', border: '1px solid var(--border)' }} title="No source URL">PDF</span>
                           )}
                           {/* Copy source URL */}
                           {s.source_url && !s.source_url.startsWith('claude-deep://') && (
@@ -1417,9 +1416,9 @@ export default function DeepIntelligence() {
                               onClick={() => { navigator.clipboard.writeText(s.source_url); showToast(true, 'Source URL copied') }}
                               title="Copy source URL"
                               className="font-mono text-xs px-1.5 py-0.5"
-                              style={{ color: '#8fa3bf', border: '1px solid #1e2530', background: 'none', cursor: 'pointer' }}
-                              onMouseEnter={e => { e.currentTarget.style.borderColor = '#8fa3bf' }}
-                              onMouseLeave={e => { e.currentTarget.style.borderColor = '#1e2530' }}
+                              style={{ color: 'var(--text-secondary)', border: '1px solid var(--border)', background: 'none', cursor: 'pointer' }}
+                              onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--text-secondary)' }}
+                              onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)' }}
                             >URL</button>
                           )}
                         </div>
@@ -1435,7 +1434,7 @@ export default function DeepIntelligence() {
 
       {/* 10. Analyst Notes */}
       <div className="card p-4">
-        <div className="font-mono text-xs uppercase tracking-widest mb-3" style={{ color: '#4a5a70' }}>
+        <div className="font-mono text-xs uppercase tracking-widest mb-3" style={{ color: 'var(--text-muted)' }}>
           Analyst Notes
         </div>
         <textarea
@@ -1444,16 +1443,16 @@ export default function DeepIntelligence() {
           placeholder="Add intelligence, context, network paths..."
           rows={4}
           className="w-full p-3 text-sm"
-          style={{ resize: 'vertical', background: '#0d1017', border: '1px solid #1e2530', color: '#e2e8f0', outline: 'none' }}
-          onFocus={e => { e.currentTarget.style.borderColor = '#1e6fd4' }}
-          onBlur={e => { e.currentTarget.style.borderColor = '#1e2530' }}
+          style={{ resize: 'vertical', background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text-primary)', outline: 'none' }}
+          onFocus={e => { e.currentTarget.style.borderColor = 'var(--accent)' }}
+          onBlur={e => { e.currentTarget.style.borderColor = 'var(--border)' }}
         />
         <div className="flex justify-end mt-2">
           <button onClick={saveNotes} disabled={saving}
             className="font-mono text-xs px-4 py-2"
             style={{
-              background: saving ? '#1e2530' : '#1e6fd4',
-              color: saving ? '#4a5a70' : '#fff',
+              background: saving ? 'var(--border)' : 'var(--accent)',
+              color: saving ? 'var(--text-muted)' : 'var(--on-accent)',
               border: 'none',
               cursor: saving ? 'not-allowed' : 'pointer',
             }}>

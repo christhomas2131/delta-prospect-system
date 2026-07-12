@@ -3,9 +3,9 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { PressureBadge, StrengthBadge, StatusBadge } from '../components/Badges'
 import PitchBookSnapshot from '../components/PitchBookSnapshot'
 
-const GOLD = '#D4AF37'
-const GOLD_BG = '#1a1508'
-const GOLD_BORDER = '#8B7120'
+const GOLD = 'var(--gold)'
+const GOLD_BG = 'var(--gold-bg)'
+const GOLD_BORDER = 'var(--gold-dim)'
 
 const STATUS_ACTIONS = [
   { value: 'qualified', label: 'Qualify' },
@@ -32,7 +32,7 @@ function SourceBadge({ signal }) {
     <span className="flex gap-1 flex-wrap mt-0.5">
       {!isAI && (
         <span className="font-mono text-xs px-1 py-0.5 leading-none"
-          style={{ background: '#111c2b', border: '1px solid #1e3a5f', color: '#4a8fbf', fontSize: 9 }}>
+          style={{ background: 'var(--accent-bg)', border: '1px solid var(--accent-border)', color: 'var(--accent-soft-text)', fontSize: 9 }}>
           RULE
         </span>
       )}
@@ -50,7 +50,7 @@ function SourceBadge({ signal }) {
       )}
       {isDisputedByAI && (
         <span className="font-mono text-xs px-1 py-0.5 leading-none"
-          style={{ background: '#1f0808', border: '1px solid #7f1d1d', color: '#ef4444', fontSize: 9 }}>
+          style={{ background: 'var(--risk-bg)', border: '1px solid var(--risk-border)', color: 'var(--risk)', fontSize: 9 }}>
           AI DISPUTED
         </span>
       )}
@@ -239,36 +239,36 @@ export default function ProspectDetail() {
   }
 
   if (loading) return (
-    <div className="p-6 font-mono text-xs" style={{ color: '#4a5a70' }}>Loading prospect...</div>
+    <div className="p-6 font-mono text-xs" style={{ color: 'var(--text-muted)' }}>Loading prospect...</div>
   )
   if (error) return (
     <div className="p-6">
-      <div className="card p-6 text-center" style={{ borderLeft: '3px solid #ef4444' }}>
-        <div className="font-mono text-sm mb-2" style={{ color: '#ef4444' }}>⚠ Connection Error</div>
-        <div className="text-sm mb-4" style={{ color: '#8fa3bf' }}>{error}</div>
+      <div className="card p-6 text-center" style={{ borderLeft: '3px solid var(--risk)' }}>
+        <div className="font-mono text-sm mb-2" style={{ color: 'var(--risk)' }}>⚠ Connection Error</div>
+        <div className="text-sm mb-4" style={{ color: 'var(--text-secondary)' }}>{error}</div>
         <button onClick={load} className="font-mono text-xs px-4 py-2"
-          style={{ background: '#1e6fd4', color: '#fff', border: 'none', cursor: 'pointer' }}>
+          style={{ background: 'var(--accent)', color: 'var(--on-accent)', border: 'none', cursor: 'pointer' }}>
           Retry
         </button>
       </div>
     </div>
   )
   if (!prospect) return (
-    <div className="p-6 font-mono text-xs" style={{ color: '#ef4444' }}>Prospect not found.</div>
+    <div className="p-6 font-mono text-xs" style={{ color: 'var(--risk)' }}>Prospect not found.</div>
   )
 
   return (
     <div className="p-6 max-w-5xl">
       {/* Back */}
       <button onClick={() => navigate('/prospects')} className="font-mono text-xs mb-4 flex items-center gap-1"
-        style={{ background: 'none', border: 'none', color: '#8fa3bf', cursor: 'pointer' }}>
+        style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer' }}>
         ← Back to Matrix
       </button>
 
       {/* Toast */}
       {toast && (
         <div className="mb-4 px-4 py-2 text-sm font-mono"
-          style={{ background: toast.ok ? '#052e16' : '#1f0808', border: `1px solid ${toast.ok ? '#14532d' : '#7f1d1d'}`, color: toast.ok ? '#22c55e' : '#ef4444' }}>
+          style={{ background: toast.ok ? 'var(--positive-bg)' : 'var(--risk-bg)', border: `1px solid ${toast.ok ? 'var(--positive-border)' : 'var(--risk-border)'}`, color: toast.ok ? 'var(--positive)' : 'var(--risk)' }}>
           {toast.msg}
         </div>
       )}
@@ -278,38 +278,38 @@ export default function ProspectDetail() {
         <div className="flex items-start justify-between flex-wrap gap-4">
           <div>
             <div className="flex items-center gap-3 mb-1">
-              <span className="font-mono text-2xl font-bold" style={{ color: '#1e6fd4' }}>{prospect.ticker}</span>
+              <span className="font-mono text-2xl font-bold" style={{ color: 'var(--accent)' }}>{prospect.ticker}</span>
               <button
                 onClick={toggleWatchlist}
                 title={isWatchlisted ? 'Remove from watchlist' : 'Add to watchlist'}
                 style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px', lineHeight: 1 }}
               >
-                <span style={{ fontSize: 22, color: isWatchlisted ? '#D4AF37' : '#555', transition: 'color 0.15s' }}>
+                <span style={{ fontSize: 22, color: isWatchlisted ? 'var(--gold)' : 'var(--text-muted)', transition: 'color 0.15s' }}>
                   {isWatchlisted ? '★' : '☆'}
                 </span>
               </button>
               <StatusBadge status={prospect.status} />
             </div>
-            <div className="text-lg font-semibold mb-1" style={{ color: '#e2e8f0' }}>{prospect.company_name}</div>
-            <div className="font-mono text-xs" style={{ color: '#8fa3bf' }}>
+            <div className="text-lg font-semibold mb-1" style={{ color: 'var(--text-primary)' }}>{prospect.company_name}</div>
+            <div className="font-mono text-xs" style={{ color: 'var(--text-secondary)' }}>
               {prospect.gics_sector} · {prospect.gics_industry_group}
               {prospect.market_cap_aud && <span> · {fmtMarketCap(prospect.market_cap_aud)} AUD</span>}
               {prospect.website && (
                 <a href={prospect.website.startsWith('http') ? prospect.website : `https://${prospect.website}`}
                   target="_blank" rel="noopener noreferrer"
-                  style={{ color: '#1e6fd4', marginLeft: 8 }}>
+                  style={{ color: 'var(--accent)', marginLeft: 8 }}>
                   {prospect.website} ↗
                 </a>
               )}
             </div>
           </div>
           <div className="text-right">
-            <div className="font-mono text-xs mb-1" style={{ color: '#4a5a70' }}>PROSPECT SCORE</div>
-            <div className="font-mono text-3xl font-bold" style={{ color: prospect.prospect_score >= 15 ? '#22c55e' : prospect.prospect_score >= 8 ? '#eab308' : '#3b82f6' }}>
+            <div className="font-mono text-xs mb-1" style={{ color: 'var(--text-muted)' }}>PROSPECT SCORE</div>
+            <div className="font-mono text-3xl font-bold" style={{ color: prospect.prospect_score >= 15 ? 'var(--positive)' : prospect.prospect_score >= 8 ? 'var(--caution)' : 'var(--info)' }}>
               {prospect.prospect_score ? Number(prospect.prospect_score).toFixed(1) : '—'}
             </div>
             {prospect.likelihood_score && (
-              <div className="font-mono text-xs mt-1" style={{ color: '#8fa3bf' }}>
+              <div className="font-mono text-xs mt-1" style={{ color: 'var(--text-secondary)' }}>
                 likelihood {prospect.likelihood_score}/10
               </div>
             )}
@@ -318,9 +318,9 @@ export default function ProspectDetail() {
             )}
             <button onClick={copyBrief}
               className="font-mono text-xs px-3 py-1.5 mt-2"
-              style={{ background: 'none', border: '1px solid #1e2530', color: '#8fa3bf', cursor: 'pointer' }}
-              onMouseEnter={e => { e.currentTarget.style.borderColor = '#2d3a4d'; e.currentTarget.style.color = '#e2e8f0' }}
-              onMouseLeave={e => { e.currentTarget.style.borderColor = '#1e2530'; e.currentTarget.style.color = '#8fa3bf' }}
+              style={{ background: 'none', border: '1px solid var(--border)', color: 'var(--text-secondary)', cursor: 'pointer' }}
+              onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--border-strong)'; e.currentTarget.style.color = 'var(--text-primary)' }}
+              onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--text-secondary)' }}
             >
               ⧉ Copy Brief
             </button>
@@ -333,7 +333,7 @@ export default function ProspectDetail() {
         {(prospect.strategic_direction || prospect.primary_tailwind || prospect.primary_headwind) && (
           <div className="card p-4">
             <div className="flex items-center justify-between mb-3">
-              <div className="font-mono text-xs uppercase tracking-widest" style={{ color: '#4a5a70' }}>
+              <div className="font-mono text-xs uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
                 Strategic Profile
               </div>
               {hasAISignals && (
@@ -345,26 +345,26 @@ export default function ProspectDetail() {
             </div>
             {prospect.strategic_direction && (
               <div className="mb-3">
-                <div className="font-mono text-xs mb-1" style={{ color: '#4a5a70' }}>DIRECTION</div>
-                <div className="text-sm" style={{ color: '#e2e8f0' }}>{prospect.strategic_direction}</div>
+                <div className="font-mono text-xs mb-1" style={{ color: 'var(--text-muted)' }}>DIRECTION</div>
+                <div className="text-sm" style={{ color: 'var(--text-primary)' }}>{prospect.strategic_direction}</div>
               </div>
             )}
             {prospect.primary_tailwind && (
               <div className="mb-3">
-                <div className="font-mono text-xs mb-1" style={{ color: '#22c55e' }}>↑ TAILWIND</div>
-                <div className="text-sm" style={{ color: '#e2e8f0' }}>{prospect.primary_tailwind}</div>
+                <div className="font-mono text-xs mb-1" style={{ color: 'var(--positive)' }}>↑ TAILWIND</div>
+                <div className="text-sm" style={{ color: 'var(--text-primary)' }}>{prospect.primary_tailwind}</div>
               </div>
             )}
             {prospect.primary_headwind && (
               <div>
-                <div className="font-mono text-xs mb-1" style={{ color: '#ef4444' }}>↓ HEADWIND</div>
-                <div className="text-sm" style={{ color: '#e2e8f0' }}>{prospect.primary_headwind}</div>
+                <div className="font-mono text-xs mb-1" style={{ color: 'var(--risk)' }}>↓ HEADWIND</div>
+                <div className="text-sm" style={{ color: 'var(--text-primary)' }}>{prospect.primary_headwind}</div>
               </div>
             )}
             {deepResult?.profile?.likelihood_reasoning && (
               <div className="mt-3 pt-3" style={{ borderTop: `1px solid ${GOLD_BORDER}` }}>
                 <div className="font-mono text-xs mb-1" style={{ color: GOLD }}>◆ AI LIKELIHOOD REASONING</div>
-                <div className="text-xs" style={{ color: '#8fa3bf', lineHeight: 1.5 }}>
+                <div className="text-xs" style={{ color: 'var(--text-secondary)', lineHeight: 1.5 }}>
                   {deepResult.profile.likelihood_reasoning}
                 </div>
               </div>
@@ -374,7 +374,7 @@ export default function ProspectDetail() {
 
         {/* Actions */}
         <div className="card p-4">
-          <div className="font-mono text-xs uppercase tracking-widest mb-3" style={{ color: '#4a5a70' }}>
+          <div className="font-mono text-xs uppercase tracking-widest mb-3" style={{ color: 'var(--text-muted)' }}>
             Actions
           </div>
           <div className="flex flex-wrap gap-2 mb-3">
@@ -382,10 +382,10 @@ export default function ProspectDetail() {
               <button key={a.value} onClick={() => updateStatus(a.value)}
                 className="font-mono text-xs px-3 py-1.5 transition-all"
                 style={{
-                  background: prospect.status === a.value ? '#1e6fd4' : 'none',
+                  background: prospect.status === a.value ? 'var(--accent)' : 'none',
                   border: '1px solid',
-                  borderColor: prospect.status === a.value ? '#1e6fd4' : '#1e2530',
-                  color: prospect.status === a.value ? '#fff' : '#8fa3bf',
+                  borderColor: prospect.status === a.value ? 'var(--accent)' : 'var(--border)',
+                  color: prospect.status === a.value ? 'var(--on-accent)' : 'var(--text-secondary)',
                   cursor: 'pointer',
                 }}>
                 {a.label}
@@ -398,9 +398,9 @@ export default function ProspectDetail() {
             <button onClick={triggerEnrich} disabled={enriching}
               className="font-mono text-xs px-3 py-2 flex-1"
               style={{
-                background: enriching ? '#1e2530' : '#1558a8',
-                color: enriching ? '#4a5a70' : '#e2e8f0',
-                border: '1px solid #1e3a5f',
+                background: enriching ? 'var(--border)' : 'var(--accent-dim)',
+                color: enriching ? 'var(--text-muted)' : 'var(--text-primary)',
+                border: '1px solid var(--accent-border)',
                 cursor: enriching ? 'not-allowed' : 'pointer',
               }}>
               {enriching ? 'Enriching...' : '⟳ Enrich'}
@@ -411,9 +411,9 @@ export default function ProspectDetail() {
               <button onClick={triggerDeepAnalysis} disabled={deepAnalysing}
                 className="font-mono text-xs px-3 py-2 flex-1"
                 style={{
-                  background: deepAnalysing ? '#1e2530' : GOLD_BG,
-                  color: deepAnalysing ? '#4a5a70' : GOLD,
-                  border: `1px solid ${deepAnalysing ? '#1e2530' : GOLD_BORDER}`,
+                  background: deepAnalysing ? 'var(--border)' : GOLD_BG,
+                  color: deepAnalysing ? 'var(--text-muted)' : GOLD,
+                  border: `1px solid ${deepAnalysing ? 'var(--border)' : GOLD_BORDER}`,
                   cursor: deepAnalysing ? 'not-allowed' : 'pointer',
                   fontWeight: 600,
                 }}>
@@ -426,8 +426,8 @@ export default function ProspectDetail() {
                 className="font-mono text-xs px-3 py-2 flex-1"
                 style={{
                   background: 'none',
-                  color: '#2d3a4d',
-                  border: '1px solid #1e2530',
+                  color: 'var(--border-strong)',
+                  border: '1px solid var(--border)',
                   cursor: 'not-allowed',
                 }}>
                 ◆ Deep Analysis
@@ -442,24 +442,24 @@ export default function ProspectDetail() {
           )}
 
           {deepJob?.status === 'running' && (
-            <div className="mt-3 p-3" style={{ background: '#0d1017', border: `1px solid ${GOLD_BORDER}` }}>
+            <div className="mt-3 p-3" style={{ background: 'var(--surface)', border: `1px solid ${GOLD_BORDER}` }}>
               <div className="flex items-center justify-between gap-3 mb-2">
                 <div className="font-mono text-xs" style={{ color: GOLD }}>
                   ◆ {deepJob.message || 'Running deep analysis'}
                 </div>
-                <div className="font-mono text-xs" style={{ color: '#8fa3bf' }}>
+                <div className="font-mono text-xs" style={{ color: 'var(--text-secondary)' }}>
                   {deepJob.progress_pct || 0}%
                 </div>
               </div>
-              <div style={{ height: 8, background: '#1e2530', overflow: 'hidden' }}>
+              <div style={{ height: 8, background: 'var(--border)', overflow: 'hidden' }}>
                 <div style={{
                   width: `${deepJob.progress_pct || 0}%`,
                   height: '100%',
-                  background: 'linear-gradient(90deg, #8B7120 0%, #D4AF37 100%)',
+                  background: 'linear-gradient(90deg, var(--gold-dim) 0%, var(--gold) 100%)',
                   transition: 'width 0.3s ease',
                 }} />
               </div>
-              <div className="font-mono text-xs mt-2" style={{ color: '#8fa3bf' }}>
+              <div className="font-mono text-xs mt-2" style={{ color: 'var(--text-secondary)' }}>
                 {deepJob.stage === 'collecting_documents'
                   ? 'Pulling and cleaning source documents'
                   : deepJob.stage === 'running_ai'
@@ -472,9 +472,9 @@ export default function ProspectDetail() {
           )}
 
           {!deepAvailable && (
-            <div className="font-mono text-xs mt-2" style={{ color: '#2d3a4d' }}>
+            <div className="font-mono text-xs mt-2" style={{ color: 'var(--border-strong)' }}>
               Configure API key in{' '}
-              <a href="/settings" style={{ color: '#4a5a70', textDecoration: 'underline' }}>Settings</a>
+              <a href="/settings" style={{ color: 'var(--text-muted)', textDecoration: 'underline' }}>Settings</a>
               {' '}to enable
             </div>
           )}
@@ -483,8 +483,8 @@ export default function ProspectDetail() {
 
       {/* Pressure Signals */}
       <div className="card mb-4">
-        <div className="px-4 py-3 flex items-center gap-3" style={{ borderBottom: '1px solid #1e2530' }}>
-          <span className="font-mono text-xs uppercase tracking-widest" style={{ color: '#4a5a70' }}>
+        <div className="px-4 py-3 flex items-center gap-3" style={{ borderBottom: '1px solid var(--border)' }}>
+          <span className="font-mono text-xs uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
             Pressure Signals ({signals.length})
           </span>
           {hasAISignals && (
@@ -492,15 +492,15 @@ export default function ProspectDetail() {
           )}
         </div>
         {signals.length === 0 ? (
-          <div className="px-4 py-6 font-mono text-xs text-center" style={{ color: '#4a5a70' }}>
+          <div className="px-4 py-6 font-mono text-xs text-center" style={{ color: 'var(--text-muted)' }}>
             No signals detected — run enrichment to analyse ASX announcements
           </div>
         ) : (
           <table className="w-full">
             <thead>
-              <tr style={{ borderBottom: '1px solid #1e2530' }}>
+              <tr style={{ borderBottom: '1px solid var(--border)' }}>
                 {['Type', 'Strength', 'Summary', 'Source', 'Confidence', 'Date'].map(h => (
-                  <th key={h} className="px-4 py-2.5 text-left font-mono text-xs uppercase" style={{ color: '#4a5a70' }}>{h}</th>
+                  <th key={h} className="px-4 py-2.5 text-left font-mono text-xs uppercase" style={{ color: 'var(--text-muted)' }}>{h}</th>
                 ))}
               </tr>
             </thead>
@@ -510,17 +510,17 @@ export default function ProspectDetail() {
                 return (
                   <tr key={s.id}
                     style={{
-                      borderBottom: '1px solid #1e2530',
+                      borderBottom: '1px solid var(--border)',
                       opacity: disputed ? 0.45 : 1,
                     }}>
                     <td className="px-4 py-2.5"><PressureBadge type={s.pressure_type} /></td>
                     <td className="px-4 py-2.5"><StrengthBadge strength={s.strength} /></td>
-                    <td className="px-4 py-2.5 text-sm" style={{ color: disputed ? '#6b7280' : '#e2e8f0', maxWidth: 280 }}>
+                    <td className="px-4 py-2.5 text-sm" style={{ color: disputed ? 'var(--text-soft)' : 'var(--text-primary)', maxWidth: 280 }}>
                       <span style={{ textDecoration: disputed ? 'line-through' : 'none' }}>
                         {s.summary}
                       </span>
                       {s.source_title && (
-                        <div className="font-mono text-xs mt-0.5 truncate" style={{ color: '#4a5a70' }}>
+                        <div className="font-mono text-xs mt-0.5 truncate" style={{ color: 'var(--text-muted)' }}>
                           {s.source_title}
                         </div>
                       )}
@@ -528,10 +528,10 @@ export default function ProspectDetail() {
                     <td className="px-4 py-2.5">
                       <SourceBadge signal={s} />
                     </td>
-                    <td className="px-4 py-2.5 font-mono text-xs" style={{ color: '#8fa3bf' }}>
+                    <td className="px-4 py-2.5 font-mono text-xs" style={{ color: 'var(--text-secondary)' }}>
                       {s.confidence_score ? `${Math.round(s.confidence_score * 100)}%` : '—'}
                     </td>
-                    <td className="px-4 py-2.5 font-mono text-xs" style={{ color: '#4a5a70' }}>
+                    <td className="px-4 py-2.5 font-mono text-xs" style={{ color: 'var(--text-muted)' }}>
                       {s.source_date || '—'}
                     </td>
                   </tr>
@@ -547,7 +547,7 @@ export default function ProspectDetail() {
 
       {/* Analyst Notes */}
       <div className="card p-4">
-        <div className="font-mono text-xs uppercase tracking-widest mb-3" style={{ color: '#4a5a70' }}>
+        <div className="font-mono text-xs uppercase tracking-widest mb-3" style={{ color: 'var(--text-muted)' }}>
           Analyst Notes
         </div>
         <textarea
@@ -556,14 +556,14 @@ export default function ProspectDetail() {
           placeholder="Add intelligence, context, network paths..."
           rows={4}
           className="w-full p-3 text-sm"
-          style={{ resize: 'vertical', background: '#0d1017', border: '1px solid #1e2530', color: '#e2e8f0' }}
+          style={{ resize: 'vertical', background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}
         />
         <div className="flex justify-end mt-2">
           <button onClick={saveNotes} disabled={saving}
             className="font-mono text-xs px-4 py-2"
             style={{
-              background: saving ? '#1e2530' : '#1e6fd4',
-              color: saving ? '#4a5a70' : '#fff',
+              background: saving ? 'var(--border)' : 'var(--accent)',
+              color: saving ? 'var(--text-muted)' : 'var(--on-accent)',
               border: 'none',
               cursor: saving ? 'not-allowed' : 'pointer',
             }}>
