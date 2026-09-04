@@ -4,11 +4,12 @@ ASX Listings Scraper & Sector Filter
 Fetches the full ASX listed companies CSV, maps GICS sectors,
 filters to target sectors, and upserts into PostgreSQL.
 
-Data source: https://www.asx.com.au/asx/research/ASXListedCompanies.csv
-CSV format:
-    Row 1: "ASX listed companies as at <date>"   (metadata — skip)
-    Row 2: "Company name,ASX code,GICS industry group"  (header — skip)
-    Row 3+: data rows
+Data source: ASX company directory CSV API
+Current CSV format:
+    Row 1: "ASX code,Company name,GICs industry group,Listing date,Market Cap"
+    Row 2+: data rows
+
+The parser also accepts the retired two-row CSV format for compatibility.
 
 Usage:
     python asx_scraper.py --mode full
@@ -28,10 +29,20 @@ from psycopg2.extras import execute_values, RealDictCursor
 # Config
 # ---------------------------------------------------------------------------
 
-ASX_CSV_URL = "https://www.asx.com.au/asx/research/ASXListedCompanies.csv"
 ASX_COMPANY_ABOUT_URL = "https://cdn-api.markitdigital.com/apiman-gateway/ASX/asx-research/1.0/companies/{ticker}/about?v=undefined"
 ASX_COMPANY_HEADER_URL = "https://asx.api.markitdigital.com/asx-research/1.0/companies/{ticker}/header"
-MARKIT_TOKEN = "83ff96335c2d45a094df02a206a39ff4"
+MARKIT_TOKEN = os.getenv("ASX_MARKIT_TOKEN", "83ff96335c2d45a094df02a206a39ff4")
+ASX_CSV_URL = os.getenv(
+    "ASX_CSV_URL",
+    "https://asx.api.cmfyapp.com/asx-research/1.0/companies/directory/file",
+)
+ASX_LEGACY_CSV_URL = "https://www.asx.com.au/asx/research/ASXListedCompanies.csv"
+ASX_CSV_FALLBACK_URLS = (
+    "https://cdn-api.markitdigital.com/apiman-gateway/ASX/asx-research/1.0/companies/directory/file",
+    "https://asx.api.markitdigital.com/asx-research/1.0/companies/directory/file",
+    ASX_LEGACY_CSV_URL,
+)
+ASX_MIN_LISTING_COUNT = int(os.getenv("ASX_MIN_LISTING_COUNT", "1500"))
 
 HTTP_TIMEOUT = 30
 DETAIL_REQUEST_DELAY = 0.35
@@ -175,37 +186,114 @@ class RefreshStats:
 # CSV fetch & parse
 # ---------------------------------------------------------------------------
 
+class ASXDataSourceError(RuntimeError):
+    """Raised when no configured ASX directory source can be downloaded."""
+
+
 def fetch_asx_csv(client: httpx.Client) -> str:
-    logger.info(f"Fetching ASX CSV from {ASX_CSV_URL}")
-    resp = client.get(ASX_CSV_URL, follow_redirects=True)
-    resp.raise_for_status()
-    text = resp.text.lstrip("\ufeff")
-    logger.info(f"Fetched {len(text):,} bytes")
-    return text
+    """Download the directory CSV, falling back to the retired public URL."""
+    sources = (ASX_CSV_URL, *ASX_CSV_FALLBACK_URLS)
+    failures = []
+
+    for url in dict.fromkeys(sources):
+        logger.info("Fetching ASX company directory from %s", url)
+        request_options = {"follow_redirects": True}
+        if "asx-research/1.0" in url:
+            request_options["headers"] = {
+                "Authorization": f"Bearer {MARKIT_TOKEN}",
+                "Referer": "https://www.asx.com.au/",
+            }
+
+        try:
+            resp = client.get(url, **request_options)
+            resp.raise_for_status()
+            text = resp.text.lstrip("\ufeff")
+            if "<html" in text[:500].lower():
+                raise ValueError("ASX returned HTML instead of CSV")
+            logger.info("Fetched %s bytes from ASX company directory", f"{len(text):,}")
+            return text
+        except (httpx.HTTPError, ValueError) as exc:
+            failures.append(exc)
+            logger.warning("ASX directory source failed (%s): %s", url, exc)
+
+    raise ASXDataSourceError(
+        "ASX company directory is temporarily unavailable. Existing listing data was not changed."
+    ) from failures[-1]
 
 
 def parse_asx_csv(csv_text: str) -> list[ASXListing]:
-    lines = csv_text.strip().splitlines()
-    if len(lines) < 3:
-        raise ValueError(f"CSV too short ({len(lines)} lines)")
+    rows = list(csv.reader(io.StringIO(csv_text.strip())))
+    if len(rows) < 2:
+        raise ValueError(f"CSV too short ({len(rows)} rows)")
 
-    logger.info(f"CSV header: {lines[0].strip()}")
+    def normalize_header(value: str) -> str:
+        return re.sub(r"[^a-z0-9]+", " ", value.lower()).strip()
 
-    reader = csv.reader(io.StringIO("\n".join(lines[2:])))
+    header_index = None
+    column_indexes = None
+    ticker_headers = {"asx code", "code", "ticker"}
+    company_headers = {"company name", "company"}
+    industry_headers = {"gics industry group", "industry group"}
+
+    # ASX has published both a metadata row + header and a normal header row.
+    for index, row in enumerate(rows[:5]):
+        normalized = [normalize_header(cell) for cell in row]
+        ticker_index = next((i for i, value in enumerate(normalized) if value in ticker_headers), None)
+        company_index = next((i for i, value in enumerate(normalized) if value in company_headers), None)
+        industry_index = next((i for i, value in enumerate(normalized) if value in industry_headers), None)
+        if None not in (ticker_index, company_index, industry_index):
+            header_index = index
+            column_indexes = (ticker_index, company_index, industry_index)
+            break
+
+    if header_index is None or column_indexes is None:
+        raise ValueError("ASX CSV is missing the code, company name, or GICS industry group header")
+
+    ticker_index, company_index, industry_index = column_indexes
+    logger.info("ASX CSV header found on row %s", header_index + 1)
+
     listings, skipped = [], 0
+    required_index = max(column_indexes)
 
-    for row in reader:
-        if len(row) < 3 or not row[0].strip() or not row[1].strip():
+    for row in rows[header_index + 1:]:
+        if len(row) <= required_index:
+            skipped += 1
+            continue
+        ticker = row[ticker_index].strip()
+        company_name = row[company_index].strip()
+        industry_group = row[industry_index].strip()
+        if not ticker or not company_name or not industry_group:
             skipped += 1
             continue
         listings.append(ASXListing(
-            ticker=row[1],
-            company_name=row[0],
-            gics_industry_group=row[2],
+            ticker=ticker,
+            company_name=company_name,
+            gics_industry_group=industry_group,
         ))
 
     logger.info(f"Parsed {len(listings):,} listings ({skipped} skipped)")
     return listings
+
+
+def validate_listing_snapshot(
+    listings: list[ASXListing],
+    minimum_count: int = ASX_MIN_LISTING_COUNT,
+) -> None:
+    """Reject truncated or duplicate directory snapshots before any DB writes."""
+    listing_count = len(listings)
+    if listing_count < minimum_count:
+        raise ASXDataSourceError(
+            f"ASX returned only {listing_count:,} companies, below the safety minimum of "
+            f"{minimum_count:,}. Refresh cancelled and existing listing data was not changed."
+        )
+
+    tickers = [listing.ticker for listing in listings]
+    duplicate_count = listing_count - len(set(tickers))
+    if duplicate_count:
+        raise ASXDataSourceError(
+            f"ASX returned {duplicate_count:,} duplicate company codes. "
+            "Refresh cancelled and existing listing data was not changed."
+        )
 
 
 def _clean_text(value) -> str:
@@ -707,8 +795,7 @@ def run_full_refresh(triggered_by: str = "system"):
         csv_text = fetch_asx_csv(client)
         listings = parse_asx_csv(csv_text)
 
-    if len(listings) < 1500:
-        logger.warning(f"Only {len(listings)} listings — expected ~2400. Possible truncation.")
+    validate_listing_snapshot(listings)
 
     conn = get_conn()
     try:

@@ -1318,6 +1318,20 @@ def get_dashboard_stats():
 # Endpoints: Refresh & Enrichment
 # ---------------------------------------------------------------------------
 
+def _public_refresh_error(error) -> str:
+    """Convert upstream and database exceptions into useful operator copy."""
+    message = str(error or "")
+    lowered = message.lower()
+    if "existing listing data was not changed" in lowered:
+        return message
+    if "404" in lowered or "not found" in lowered:
+        return "The ASX listings feed could not be found. Existing listing data was not changed."
+    if "timeout" in lowered or "timed out" in lowered:
+        return "ASX did not respond in time. Existing listing data was not changed."
+    if "connection" in lowered or "network" in lowered:
+        return "ASX could not be reached. Check the network and try again. Existing data is safe."
+    return "The ASX refresh could not complete. Current dashboard data remains available."
+
 def _run_refresh_with_progress(triggered_by: str):
     """Wrapper around ASX refresh that tracks progress and logs to refresh_runs."""
     _refresh_progress["running"] = True
@@ -1332,6 +1346,7 @@ def _run_refresh_with_progress(triggered_by: str):
         from asx_scraper import (
             fetch_asx_csv,
             parse_asx_csv,
+            validate_listing_snapshot,
             upsert_listings,
             backfill_prospect_matrix,
             refresh_target_company_details,
@@ -1362,6 +1377,7 @@ def _run_refresh_with_progress(triggered_by: str):
 
         _refresh_progress["phase"] = "Parsing listings..."
         listings = parse_asx_csv(csv_text)
+        validate_listing_snapshot(listings)
         _refresh_progress["detail"] = f"{len(listings)} companies found"
 
         _refresh_progress["phase"] = "Updating database..."
@@ -1418,9 +1434,9 @@ def _run_refresh_with_progress(triggered_by: str):
         _refresh_progress["ticker"] = ""
         logger.info(f"Refresh complete: {len(listings)} listings")
     except Exception as e:
-        logger.error(f"Refresh failed: {e}")
+        logger.exception("Refresh failed")
         _refresh_progress["phase"] = "Failed"
-        _refresh_progress["detail"] = str(e)
+        _refresh_progress["detail"] = _public_refresh_error(e)
         # Log failure
         if run_id:
             try:
@@ -1491,7 +1507,12 @@ def get_latest_refresh():
                 ORDER BY started_at DESC LIMIT 1
             """)
             row = cur.fetchone()
-            return row or {}
+            if not row:
+                return {}
+            result = dict(row)
+            if result.get("status") == "failed":
+                result["display_error"] = _public_refresh_error(result.get("error_message"))
+            return result
     finally:
         put_conn(conn)
 

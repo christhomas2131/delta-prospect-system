@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What This Project Is
 
-Automated prospect intelligence platform for a consultancy (New Delta) that sells operational expertise to ASX-listed heavy industry companies. Ingests ~2400 ASX companies, filters to 4 target sectors, enriches with pressure signal analysis, scores and ranks prospects, and serves a React dashboard.
+Automated prospect intelligence platform for a consultancy (New Delta) that sells operational expertise to ASX-listed heavy industry companies. Ingests ~1800+ companies from the ASX company directory, filters to 4 target sectors, enriches with pressure signal analysis, scores and ranks prospects, and serves a React dashboard.
 
 Target sectors: **Energy, Materials (metals/mining), Capital Goods (industrials), Utilities**
 
@@ -75,7 +75,7 @@ psql -U delta -d delta_prospect -f schema.sql
 ASX CSV + ASX JSON API (Markit Digital)
     ↓
 asx_scraper.py
-  ├─ Parse ~2400 listings → asx_listings table
+  ├─ Parse ~1800+ companies → asx_listings table
   ├─ Create prospect_matrix rows for target sectors
   ├─ fetch_company_detail(): market_cap_aud, last_price_aud, day_volume, location
   ├─ apply_gate1_dq(): cap > 0 AND cap < AUD $5M → disqualified

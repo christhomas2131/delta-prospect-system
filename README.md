@@ -9,7 +9,7 @@ Automated prospect intelligence for ASX-listed heavy industry, energy, and minin
 ## Architecture
 
 ```
-ASX CSV Feed (~2400 listings)
+ASX Company Directory CSV (~1800+ companies)
         |
         v
 +----------------------------------+

@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react'
+import { useCallback, useEffect, useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 function StatCard({ label, value, sub, color }) {
@@ -23,6 +23,31 @@ function formatAiOutcome(progress) {
   return summary
 }
 
+function formatDateTime(value) {
+  if (!value) return null
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return null
+  return date.toLocaleDateString('en-AU', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
+function refreshFailureMessage(refresh) {
+  if (refresh?.display_error) return refresh.display_error
+  const raw = String(refresh?.error_message || '').toLowerCase()
+  if (raw.includes('404') || raw.includes('not found')) {
+    return 'The ASX listings feed could not be found. Existing listing data was not changed.'
+  }
+  if (raw.includes('timeout') || raw.includes('timed out')) {
+    return 'ASX did not respond in time. Existing listing data was not changed.'
+  }
+  return 'The ASX refresh could not complete. Current dashboard data remains available.'
+}
+
 export default function Dashboard() {
   const [stats, setStats] = useState(null)
   const [sectors, setSectors] = useState([])
@@ -39,8 +64,10 @@ export default function Dashboard() {
   const intervalRef = useRef(null)
   const enrichPollRef = useRef(null)
   const refreshPollRef = useRef(null)
+  const dataAsOf = formatDateTime(stats?.last_refresh)
+  const operationsBusy = refreshing || enriching
 
-  const loadData = async (silent = false) => {
+  const loadData = useCallback(async (silent = false) => {
     if (!silent) setLoading(true)
     setError(null)
     try {
@@ -59,15 +86,15 @@ export default function Dashboard() {
       setError('Cannot reach the API - is the backend running?')
     }
     setLoading(false)
-  }
+  }, [])
 
-  const loadLastRefresh = () => {
+  const loadLastRefresh = useCallback(() => {
     fetch('/api/refresh/latest').then(r => r.json()).then(d => {
       if (d && d.started_at) setLastRefresh(d)
     }).catch(() => {})
-  }
+  }, [])
 
-  const startRefreshPolling = () => {
+  const startRefreshPolling = useCallback(() => {
     if (refreshPollRef.current) return
     refreshPollRef.current = setInterval(async () => {
       try {
@@ -90,9 +117,9 @@ export default function Dashboard() {
         }
       } catch { /* ignore */ }
     }, 2000)
-  }
+  }, [loadData, loadLastRefresh])
 
-  const startEnrichPolling = () => {
+  const startEnrichPolling = useCallback(() => {
     if (enrichPollRef.current) return
     enrichPollRef.current = setInterval(async () => {
       try {
@@ -114,7 +141,7 @@ export default function Dashboard() {
         }
       } catch { /* ignore */ }
     }, 3000)
-  }
+  }, [loadData])
 
   useEffect(() => {
     loadData()
@@ -131,13 +158,15 @@ export default function Dashboard() {
       if (enrichPollRef.current) clearInterval(enrichPollRef.current)
       if (refreshPollRef.current) clearInterval(refreshPollRef.current)
     }
-  }, [])
+  }, [loadData, loadLastRefresh, startEnrichPolling, startRefreshPolling])
 
   const handleRefresh = async () => {
+    if (operationsBusy) return
     setRefreshing(true)
     try {
       const r = await fetch('/api/refresh', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ triggered_by: 'dashboard' }) })
       const d = await r.json()
+      if (!r.ok) throw new Error(d.detail || d.message || 'Refresh request failed')
       setToast({ ok: true, msg: d.message || 'Refresh started' })
       setTimeout(() => setToast(null), 5000)
       startRefreshPolling()
@@ -149,10 +178,12 @@ export default function Dashboard() {
   }
 
   const handleBatchEnrich = async () => {
+    if (operationsBusy) return
     setEnriching(true)
     try {
       const r = await fetch('/api/enrich/batch', { method: 'POST' })
       const d = await r.json()
+      if (!r.ok) throw new Error(d.detail || d.message || 'Enrichment request failed')
       setToast({ ok: true, msg: d.message || 'Batch enrichment started' })
       setTimeout(() => setToast(null), 5000)
       startEnrichPolling()
@@ -164,10 +195,12 @@ export default function Dashboard() {
   }
 
   const handleEnrichTopLeads = async () => {
+    if (operationsBusy) return
     setEnriching(true)
     try {
       const r = await fetch('/api/enrich/batch?min_score=8&exclude_dq=true', { method: 'POST' })
       const d = await r.json()
+      if (!r.ok) throw new Error(d.detail || d.message || 'Enrichment request failed')
       setToast({ ok: true, msg: d.message || 'Top leads enrichment started' })
       setTimeout(() => setToast(null), 5000)
       startEnrichPolling()
@@ -213,21 +246,22 @@ export default function Dashboard() {
           </h1>
         </div>
         <div className="flex items-center gap-3 flex-wrap">
-          {lastRefresh && (
-            <span className="font-mono text-xs" style={{ color: lastRefresh.status === 'failed' ? 'var(--risk)' : 'var(--text-muted)' }}>
-              Last refresh: {new Date(lastRefresh.started_at).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+          {dataAsOf && (
+            <span className="font-mono text-xs" style={{ color: 'var(--text-muted)' }} title="Most recent successful ASX refresh">
+              Data synced: {dataAsOf}
             </span>
           )}
           <button
             onClick={handleEnrichTopLeads}
-            disabled={enriching}
+            disabled={operationsBusy}
+            title="Enrich scored prospects only"
             className="font-mono text-xs px-4 py-2 transition-all"
             style={{
-              background: enriching ? 'var(--border)' : 'var(--gold-bg)',
-              color: enriching ? 'var(--text-muted)' : 'var(--gold)',
+              background: operationsBusy ? 'var(--border)' : 'var(--gold-bg)',
+              color: operationsBusy ? 'var(--text-muted)' : 'var(--gold)',
               border: '1px solid',
-              borderColor: enriching ? 'var(--border)' : 'var(--gold-border)',
-              cursor: enriching ? 'not-allowed' : 'pointer',
+              borderColor: operationsBusy ? 'var(--border)' : 'var(--gold-border)',
+              cursor: operationsBusy ? 'not-allowed' : 'pointer',
               fontWeight: 600,
             }}
           >
@@ -235,14 +269,15 @@ export default function Dashboard() {
           </button>
           <button
             onClick={handleBatchEnrich}
-            disabled={enriching}
+            disabled={operationsBusy}
+            title="Enrich every prospect. This can take about 20 minutes."
             className="font-mono text-xs px-4 py-2 transition-all"
             style={{
-              background: enriching ? 'var(--border)' : 'var(--positive-border)',
-              color: enriching ? 'var(--text-muted)' : 'var(--positive)',
+              background: operationsBusy ? 'var(--border)' : 'var(--positive-border)',
+              color: operationsBusy ? 'var(--text-muted)' : 'var(--positive)',
               border: '1px solid',
-              borderColor: enriching ? 'var(--border)' : 'var(--positive-border)',
-              cursor: enriching ? 'not-allowed' : 'pointer',
+              borderColor: operationsBusy ? 'var(--border)' : 'var(--positive-border)',
+              cursor: operationsBusy ? 'not-allowed' : 'pointer',
             }}
           >
             {enriching && enrichProgress?.ai_running
@@ -253,13 +288,14 @@ export default function Dashboard() {
           </button>
           <button
             onClick={handleRefresh}
-            disabled={refreshing}
+            disabled={operationsBusy}
+            title="Sync the latest ASX company directory"
             className="font-mono text-xs px-4 py-2 transition-all"
             style={{
-              background: refreshing ? 'var(--border)' : 'var(--accent)',
-              color: refreshing ? 'var(--text-muted)' : 'var(--on-accent)',
+              background: operationsBusy ? 'var(--border)' : 'var(--accent)',
+              color: operationsBusy ? 'var(--text-muted)' : 'var(--on-accent)',
               border: 'none',
-              cursor: refreshing ? 'not-allowed' : 'pointer',
+              cursor: operationsBusy ? 'not-allowed' : 'pointer',
             }}
           >
             {refreshing && refreshProgress ? 'REFRESHING...' : refreshing ? 'REFRESHING...' : 'REFRESH ASX DATA'}
@@ -268,8 +304,11 @@ export default function Dashboard() {
       </div>
 
       {toast && (
-        <div className="mb-4 px-4 py-2 text-sm font-mono" style={{ background: toast.ok ? 'var(--positive-bg)' : 'var(--risk-bg)', border: `1px solid ${toast.ok ? 'var(--positive-border)' : 'var(--risk-border)'}`, color: toast.ok ? 'var(--positive)' : 'var(--risk)' }}>
-          {toast.msg}
+        <div role="status" aria-live="polite" className="mb-4 px-4 py-2 text-sm font-mono flex items-start justify-between gap-4" style={{ background: toast.ok ? 'var(--positive-bg)' : 'var(--risk-bg)', border: `1px solid ${toast.ok ? 'var(--positive-border)' : 'var(--risk-border)'}`, color: toast.ok ? 'var(--positive)' : 'var(--risk)' }}>
+          <span>{toast.msg}</span>
+          <button onClick={() => setToast(null)} aria-label="Dismiss notification" style={{ color: 'inherit', background: 'none', border: 'none', cursor: 'pointer', lineHeight: 1 }}>
+            x
+          </button>
         </div>
       )}
 
@@ -315,9 +354,12 @@ export default function Dashboard() {
       )}
 
       {refreshProgress && (
-        <div className="mb-4 px-4 py-3 font-mono text-xs" style={{ background: 'var(--card)', border: '1px solid var(--accent-border)' }}>
+        <div role="status" aria-live="polite" className="mb-4 px-4 py-3 font-mono text-xs" style={{
+          background: refreshProgress.phase === 'Failed' ? 'var(--caution-bg)' : 'var(--card)',
+          border: `1px solid ${refreshProgress.phase === 'Failed' ? 'var(--caution-border)' : 'var(--accent-border)'}`,
+        }}>
           <div className="flex items-center gap-3">
-            <span style={{ color: 'var(--info)' }}>{refreshProgress.phase}</span>
+            <span style={{ color: refreshProgress.phase === 'Failed' ? 'var(--caution)' : 'var(--info)' }}>{refreshProgress.phase}</span>
             {refreshProgress.detail && (
               <span style={{ color: 'var(--text-muted)' }}>{refreshProgress.detail}</span>
             )}
@@ -360,20 +402,44 @@ export default function Dashboard() {
 
       {lastRefresh && (
         <div className="mb-6 card px-4 py-3" style={{
-          borderLeft: `3px solid ${lastRefresh.status === 'failed' ? 'var(--risk)' : 'var(--info)'}`,
+          borderLeft: `3px solid ${lastRefresh.status === 'failed' ? 'var(--caution)' : 'var(--info)'}`,
+          background: lastRefresh.status === 'failed' ? 'var(--caution-bg)' : 'var(--card)',
         }}>
-          <div className="font-mono text-xs uppercase tracking-widest mb-1" style={{ color: 'var(--text-muted)' }}>
-            Last ASX Refresh
-          </div>
           {lastRefresh.status === 'failed' ? (
-            <div className="text-sm" style={{ color: 'var(--risk)' }}>
-              Failed - {lastRefresh.error_message || 'Unknown error'}
+            <div className="flex items-center justify-between gap-4 flex-wrap">
+              <div>
+                <div className="font-mono text-xs uppercase tracking-widest mb-1" style={{ color: 'var(--caution)' }}>
+                  Refresh needs attention
+                </div>
+                <div className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+                  {refreshFailureMessage(lastRefresh)}
+                  {dataAsOf && <span> Last successful sync: {dataAsOf}.</span>}
+                </div>
+              </div>
+              <button
+                onClick={handleRefresh}
+                disabled={operationsBusy}
+                className="font-mono text-xs px-3 py-2"
+                style={{
+                  color: operationsBusy ? 'var(--text-muted)' : 'var(--caution)',
+                  background: 'transparent',
+                  border: '1px solid var(--caution-border)',
+                  cursor: operationsBusy ? 'not-allowed' : 'pointer',
+                }}
+              >
+                {refreshing ? 'RETRYING...' : 'RETRY REFRESH'}
+              </button>
             </div>
           ) : (
-            <div className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-              {lastRefresh.total_listings?.toLocaleString() || '?'} listings found, {lastRefresh.target_sector_count?.toLocaleString() || '?'} target sector
-              {lastRefresh.new_listings > 0 && <span style={{ color: 'var(--positive)' }}> - {lastRefresh.new_listings} new added</span>}
-              {lastRefresh.delisted_count > 0 && <span style={{ color: 'var(--caution)' }}> - {lastRefresh.delisted_count} removed</span>}
+            <div>
+              <div className="font-mono text-xs uppercase tracking-widest mb-1" style={{ color: 'var(--text-muted)' }}>
+                Latest ASX sync complete
+              </div>
+              <div className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+                {lastRefresh.total_listings?.toLocaleString() || '?'} listings found, {lastRefresh.target_sector_count?.toLocaleString() || '?'} in target sectors
+                {lastRefresh.new_listings > 0 && <span style={{ color: 'var(--positive)' }}> - {lastRefresh.new_listings} added</span>}
+                {lastRefresh.delisted_count > 0 && <span style={{ color: 'var(--caution)' }}> - {lastRefresh.delisted_count} removed</span>}
+              </div>
             </div>
           )}
         </div>
@@ -412,7 +478,15 @@ export default function Dashboard() {
                   const score = p.prospect_score ? Number(p.prospect_score) : 0
                   const sc = score >= 15 ? 'var(--positive)' : score >= 8 ? 'var(--caution)' : 'var(--accent)'
                   return (
-                    <tr key={p.prospect_id} className="table-row-hover" style={{ borderBottom: '1px solid var(--border)' }} onClick={() => navigate(`/deep-intelligence/${p.prospect_id}`)}>
+                    <tr
+                      key={p.prospect_id}
+                      className="table-row-hover"
+                      style={{ borderBottom: '1px solid var(--border)' }}
+                      onClick={() => navigate(`/deep-intelligence/${p.prospect_id}`)}
+                      onKeyDown={event => event.key === 'Enter' && navigate(`/deep-intelligence/${p.prospect_id}`)}
+                      tabIndex={0}
+                      role="link"
+                    >
                       <td className="px-4 py-2.5 font-mono text-sm font-semibold" style={{ color: 'var(--accent)' }}>{p.ticker}</td>
                       <td className="px-4 py-2.5 text-sm" style={{ color: 'var(--text-primary)', maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.company_name}</td>
                       <td className="px-4 py-2.5 font-mono text-xs" style={{ color: 'var(--text-secondary)' }}>{p.gics_sector}</td>
@@ -452,7 +526,10 @@ export default function Dashboard() {
             <tbody>
               {sectors.map((s, i) => (
                 <tr key={i} className="table-row-hover" style={{ borderBottom: '1px solid var(--border)' }}
-                  onClick={() => navigate(`/leads?sector=${encodeURIComponent(s.gics_sector)}`)}>
+                  onClick={() => navigate(`/leads?sector=${encodeURIComponent(s.gics_sector)}`)}
+                  onKeyDown={event => event.key === 'Enter' && navigate(`/leads?sector=${encodeURIComponent(s.gics_sector)}`)}
+                  tabIndex={0}
+                  role="link">
                   <td className="px-4 py-2.5 font-mono text-xs font-semibold" style={{ color: 'var(--text-primary)' }}>{s.gics_sector}</td>
                   <td className="px-4 py-2.5 text-xs" style={{ color: 'var(--text-secondary)' }}>{s.gics_industry_group}</td>
                   <td className="px-4 py-2.5 font-mono text-xs" style={{ color: 'var(--text-primary)' }}>{s.total_companies}</td>

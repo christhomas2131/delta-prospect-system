@@ -584,7 +584,7 @@ ORDER BY total_companies DESC;
 -- TABLE COMMENTS
 -- ============================================================================
 
-COMMENT ON TABLE asx_listings      IS 'Master list of all ASX-listed entities. Source: asx.com.au/asx/research/ASXListedCompanies.csv';
+COMMENT ON TABLE asx_listings      IS 'Master list of companies in the ASX company directory CSV.';
 COMMENT ON TABLE prospect_matrix   IS 'Filtered/scored subset in target sectors. Core working table.';
 COMMENT ON TABLE pressure_signals  IS 'Pressure signals extracted from public filings — 6-pillar model (Production, License to Operate, Cost, People, Quality, Future Readiness).';
 COMMENT ON TABLE enrichment_log    IS 'Audit trail for all automated data pulls and analysis runs.';

@@ -4,7 +4,7 @@
 
 An automated prospect intelligence platform for a consultancy selling operational expertise to ASX-listed heavy industry, energy, and mining companies. The system:
 
-1. Ingests ALL companies listed on the Australian Securities Exchange (~2400)
+1. Ingests all companies in the ASX company directory (~1800+)
 2. Filters to target sectors: Energy, Materials (metals/mining), Capital Goods (heavy industrials), Utilities
 3. Enriches each company with pressure signal analysis using a rule-based keyword engine (no API costs)
 4. Scores and ranks prospects in a searchable dashboard (the "Prospect Matrix")
@@ -15,7 +15,7 @@ An automated prospect intelligence platform for a consultancy selling operationa
 | File | What It Does |
 |---|---|
 | `schema.sql` | PostgreSQL schema: 6 tables, 4 enums, triggers, scoring function, views, GICS seed data |
-| `asx_scraper.py` | Fetches ASX CSV feed (~2400 listings), maps GICS sectors, filters targets, upserts to DB |
+| `asx_scraper.py` | Fetches the ASX company directory CSV (~1800+ companies), maps GICS sectors, filters targets, upserts to DB |
 | `enrichment_agent.py` | Rule-based: fetches ASX announcements, pattern-matches 100+ keyword rules across 7 pressure categories, generates profiles, calculates scores. FREE, no API key needed. |
 | `api.py` | FastAPI REST backend: filtering, sorting, pagination, fuzzy search, sector stats, triggers |
 | `requirements.txt` | Python dependencies |
@@ -24,10 +24,10 @@ An automated prospect intelligence platform for a consultancy selling operationa
 ## Architecture
 
 ```
-ASX CSV (asx.com.au/asx/research/ASXListedCompanies.csv)
+ASX company directory CSV API
     |
     v
-asx_scraper.py --> PostgreSQL (asx_listings, ~2400 rows)
+asx_scraper.py --> PostgreSQL (asx_listings, ~1800+ active rows)
     |                    |
     | (filter)           |
     v                    |
@@ -119,7 +119,7 @@ No API keys required. Everything runs locally for free.
 
 ## Important Notes for Codex
 
-- ASX CSV URL: https://www.asx.com.au/asx/research/ASXListedCompanies.csv (two-row header, data on row 3)
+- ASX CSV URL: https://asx.api.cmfyapp.com/asx-research/1.0/companies/directory/file (one-row header; requires the public ASX Markit token)
 - ASX JSON announcements API is undocumented, may have rate limits. We use 1.5s delay between calls.
 - All money stored in CENTS (integer) to avoid float issues
 - The operator is a novice coder. Explain each step simply. Fix errors inline.
