@@ -116,6 +116,28 @@ export default function LeadMatrix({ watchlistOnly = false }) {
   const [enrichProgress, setEnrichProgress] = useState(null)
   const [toast, setToast] = useState(null)
   const enrichPollRef = useRef(null)
+  const [contactRunning, setContactRunning] = useState(false)
+  const [contactProgress, setContactProgress] = useState(null)
+  const contactPollRef = useRef(null)
+
+  const startContactPolling = () => {
+    if (contactPollRef.current) return
+    contactPollRef.current = setInterval(async () => {
+      try {
+        const r = await fetch('/api/contacts/status')
+        const d = await r.json()
+        setContactProgress(d)
+        if (!d.running) {
+          clearInterval(contactPollRef.current)
+          contactPollRef.current = null
+          setContactRunning(false)
+          setToast({ ok: d.contacts_added > 0, msg: `${d.contacts_added} contacts added across ${d.companies_ok} companies` })
+          setTimeout(() => setToast(null), 8000)
+          load()
+        }
+      } catch { /* ignore polling blips */ }
+    }, 2500)
+  }
 
   // Poll enrichment progress while running
   const startPolling = () => {
@@ -146,6 +168,13 @@ export default function LeadMatrix({ watchlistOnly = false }) {
       if (d.running || d.ai_running) { setEnriching(true); setEnrichProgress(d); startPolling() }
     }).catch(() => {})
     return () => { if (enrichPollRef.current) clearInterval(enrichPollRef.current) }
+  }, [])
+
+  useEffect(() => {
+    fetch('/api/contacts/status').then(r => r.json()).then(d => {
+      if (d.running) { setContactRunning(true); setContactProgress(d); startContactPolling() }
+    }).catch(() => {})
+    return () => { if (contactPollRef.current) clearInterval(contactPollRef.current) }
   }, [])
 
   // Per-row watchlist state (for optimistic updates)
@@ -360,6 +389,43 @@ export default function LeadMatrix({ watchlistOnly = false }) {
             </div>
           </div>
           <div className="flex items-center gap-2 mt-1">
+            {!watchlistOnly && (
+              <button
+                onClick={async () => {
+                  setContactRunning(true)
+                  try {
+                    const r = await fetch('/api/contacts/enrich-top', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ limit: 50, force: false }),
+                    })
+                    const d = await r.json()
+                    if (!r.ok) throw new Error(d.detail || 'Contact enrichment failed')
+                    setToast({ ok: true, msg: d.message })
+                    startContactPolling()
+                  } catch (e) {
+                    setContactRunning(false)
+                    setToast({ ok: false, msg: e.message || 'Contact enrichment failed' })
+                  }
+                  setTimeout(() => setToast(null), 5000)
+                }}
+                disabled={contactRunning}
+                className="font-mono text-xs px-3 py-1.5"
+                style={{
+                  background: contactRunning ? 'var(--border)' : 'var(--gold-bg)',
+                  border: '1px solid var(--gold-border)',
+                  color: contactRunning ? 'var(--text-muted)' : 'var(--gold)',
+                  cursor: contactRunning ? 'wait' : 'pointer',
+                }}>
+                {contactRunning ? `CONTACTS ${contactProgress?.current || 0}/${contactProgress?.total || 50}` : 'FIND TOP 50 CONTACTS'}
+              </button>
+            )}
+            <a
+              href="/api/contacts/export/csv?limit=50"
+              className="font-mono text-xs px-3 py-1.5"
+              style={{ background: 'none', border: '1px solid var(--border-strong)', color: 'var(--text-secondary)', textDecoration: 'none' }}>
+              ↓ Contacts CSV
+            </a>
             <button
               onClick={async () => {
                 setEnriching(true)
@@ -478,6 +544,17 @@ export default function LeadMatrix({ watchlistOnly = false }) {
               <span style={{ color: 'var(--gold-dim)', fontSize: 8 }}>◆ AI DEEP ANALYSIS</span>
             </div>
           )}
+        </div>
+      )}
+
+      {contactProgress?.running && (
+        <div className="mb-4 px-4 py-3 font-mono text-xs" style={{ background: 'var(--card)', border: '1px solid var(--gold-border)' }}>
+          <div className="flex items-center justify-between gap-4">
+            <span style={{ color: 'var(--gold)' }}>{contactProgress.message}</span>
+            <span style={{ color: 'var(--text-muted)' }}>
+              {contactProgress.current}/{contactProgress.total} · {contactProgress.contacts_added} contacts
+            </span>
+          </div>
         </div>
       )}
 
@@ -629,7 +706,7 @@ export default function LeadMatrix({ watchlistOnly = false }) {
       {(loading || data.length > 0) && (
         <div style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
           <div className="table-scroll">
-            <table className="w-full sticky-head" style={{ minWidth: showPillars ? 1400 : 900 }}>
+            <table className="w-full sticky-head" style={{ minWidth: showPillars ? 1480 : 980 }}>
               <thead>
                 <tr style={{ borderBottom: '1px solid var(--border)' }}>
                   <th className="px-3 py-2.5" style={{ width: 36 }} />
@@ -646,6 +723,7 @@ export default function LeadMatrix({ watchlistOnly = false }) {
                     <SortHeader label="Future" field="sig_future" sort={sort} dir={dir} onSort={handleSort} />
                   </>}
                   <SortHeader label="Signals" field="total_signals" sort={sort} dir={dir} onSort={handleSort} />
+                  <SortHeader label="Contacts" field="contact_count" sort={sort} dir={dir} onSort={handleSort} />
                   <th className="px-4 py-2.5 text-left font-mono text-xs uppercase" style={{ color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>Location</th>
                   <SortHeader label="Est. Impact" field="size_of_prize" sort={sort} dir={dir} onSort={handleSort} />
                   <th className="px-4 py-2.5 text-left font-mono text-xs uppercase" style={{ color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>Deal Fit</th>
@@ -654,7 +732,7 @@ export default function LeadMatrix({ watchlistOnly = false }) {
               </thead>
               <tbody>
                 {loading && (
-                  <tr><td colSpan={showPillars ? 17 : 11} className="px-4 py-8 text-center font-mono text-xs" style={{ color: 'var(--text-muted)' }}>Loading...</td></tr>
+                  <tr><td colSpan={showPillars ? 18 : 12} className="px-4 py-8 text-center font-mono text-xs" style={{ color: 'var(--text-muted)' }}>Loading...</td></tr>
                 )}
                 {!loading && data.map(p => {
                   const topSig = p.top_signal || ''
@@ -712,6 +790,10 @@ export default function LeadMatrix({ watchlistOnly = false }) {
                       {/* Total Signals */}
                       <td className="px-4 py-2.5 font-mono text-xs text-center" style={{ color: p.total_signals > 0 ? 'var(--text-primary)' : 'var(--border-strong)' }}>
                         {p.total_signals > 0 ? p.total_signals : '—'}
+                      </td>
+                      {/* Contacts */}
+                      <td className="px-4 py-2.5 font-mono text-xs text-center" style={{ color: p.contact_count > 0 ? 'var(--positive)' : 'var(--border-strong)' }}>
+                        {p.contact_count > 0 ? `${p.verified_contact_count}/${p.contact_count}` : '—'}
                       </td>
                       {/* Location */}
                       <td className="px-4 py-2.5 font-mono text-xs" style={{ color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>

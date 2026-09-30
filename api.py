@@ -95,6 +95,19 @@ _refresh_progress: dict = {
 _deep_analysis_jobs: dict = {}
 _deep_analysis_lock = threading.Lock()
 
+_contact_progress: dict = {
+    "running": False,
+    "current": 0,
+    "total": 0,
+    "ticker": "",
+    "companies_ok": 0,
+    "contacts_added": 0,
+    "contacts_updated": 0,
+    "failures": 0,
+    "message": "",
+}
+_contact_lock = threading.Lock()
+
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
@@ -395,6 +408,11 @@ class V3CollectRequest(BaseModel):
     max_documents: int = Field(default=6, ge=1, le=20)
     force_refresh: bool = False
 
+
+class ContactBatchRequest(BaseModel):
+    limit: int = Field(default=50, ge=1, le=50)
+    force: bool = False
+
 # ---------------------------------------------------------------------------
 # Endpoints: Prospects
 # ---------------------------------------------------------------------------
@@ -476,7 +494,7 @@ def list_prospects(
             valid_sorts = {
                 "prospect_score", "company_name", "ticker", "market_cap_aud",
                 "status", "updated_at", "total_signals", "likelihood_score",
-                "lead_tier", "size_of_prize", "has_snapshot",
+                "lead_tier", "size_of_prize", "has_snapshot", "contact_count",
             }
             if sort_by not in valid_sorts:
                 sort_by = "prospect_score"
@@ -510,6 +528,12 @@ def list_prospects(
                     pm.registered_state,
                     pm.in_australia,
                     pm.size_of_prize,
+                    (SELECT COUNT(*) FROM prospect_contacts pc
+                     WHERE pc.prospect_id = pm.id AND pc.is_active = TRUE) AS contact_count,
+                    (SELECT COUNT(*) FROM prospect_contacts pc
+                     WHERE pc.prospect_id = pm.id AND pc.is_active = TRUE
+                       AND pc.email IS NOT NULL
+                       AND COALESCE(pc.email_status, '') NOT IN ('invalid', 'disposable')) AS verified_contact_count,
                     COUNT(ps.id) AS total_signals,
                     COUNT(ps.id) FILTER (WHERE ps.strength = 'strong') AS strong_signals,
                     COUNT(ps.id) FILTER (WHERE ps.pressure_type::text = 'production') AS sig_production,
@@ -734,6 +758,232 @@ def export_prospects_csv(
         put_conn(conn)
 
 
+def _top_contact_prospects(conn, limit: int) -> list[dict]:
+    with conn.cursor(cursor_factory=RealDictCursor) as cur:
+        cur.execute("""
+            SELECT pm.id AS prospect_id, l.ticker, l.company_name, l.website,
+                   pm.prospect_score, pm.lead_tier, pm.size_of_prize
+            FROM prospect_matrix pm
+            JOIN asx_listings l ON l.id = pm.listing_id
+            WHERE l.is_active = TRUE
+              AND l.is_target_sector = TRUE
+              AND pm.status NOT IN ('disqualified', 'archived')
+            ORDER BY pm.prospect_score DESC NULLS LAST,
+                     pm.size_of_prize DESC NULLS LAST,
+                     l.market_cap_aud DESC NULLS LAST
+            LIMIT %s
+        """, (limit,))
+        return list(cur.fetchall())
+
+
+def _contact_rows(conn, prospect_id: str) -> list[dict]:
+    with conn.cursor(cursor_factory=RealDictCursor) as cur:
+        cur.execute("""
+            SELECT id, full_name, first_name, last_name, title, seniority,
+                   departments, decision_rank, email, email_status, phone,
+                   linkedin_url, source_provider, confidence_score,
+                   discovered_at, last_verified_at, updated_at
+            FROM prospect_contacts
+            WHERE prospect_id = %s AND is_active = TRUE
+            ORDER BY decision_rank DESC, confidence_score DESC NULLS LAST,
+                     full_name ASC
+        """, (prospect_id,))
+        return list(cur.fetchall())
+
+
+def _run_contact_batch(limit: int, force: bool):
+    from contact_enrichment import enrich_company_contacts
+
+    with _contact_lock:
+        _contact_progress.update({
+            "running": True, "current": 0, "total": limit, "ticker": "",
+            "companies_ok": 0, "contacts_added": 0, "contacts_updated": 0,
+            "failures": 0, "message": "Loading top prospects",
+        })
+        conn = get_conn()
+        try:
+            prospects = _top_contact_prospects(conn, limit)
+            _contact_progress["total"] = len(prospects)
+            # Apollo's free plan currently provides 75 monthly credits. Reserve
+            # one primary lookup per company, then spend at most 25 on gaps.
+            apollo_second_budget = max(0, 75 - len(prospects))
+            for index, prospect in enumerate(prospects, start=1):
+                ticker = prospect["ticker"]
+                _contact_progress.update({
+                    "current": index - 1,
+                    "ticker": ticker,
+                    "message": f"Finding contacts for {ticker}",
+                })
+                result = enrich_company_contacts(
+                    conn,
+                    prospect,
+                    force=force,
+                    allow_apollo_second=apollo_second_budget > 0,
+                )
+                if result.get("apollo_second_used"):
+                    apollo_second_budget -= 1
+                _contact_progress["contacts_added"] += result["added"]
+                _contact_progress["contacts_updated"] += result["updated"]
+                if result["added"] or result["updated"]:
+                    _contact_progress["companies_ok"] += 1
+                if result["errors"]:
+                    _contact_progress["failures"] += 1
+                _contact_progress["current"] = index
+            _contact_progress["message"] = "Contact enrichment complete"
+        except Exception as exc:
+            conn.rollback()
+            logger.exception("Top prospect contact enrichment failed")
+            _contact_progress["message"] = f"Contact enrichment stopped: {exc}"
+            _contact_progress["failures"] += 1
+        finally:
+            _contact_progress["running"] = False
+            _contact_progress["ticker"] = ""
+            put_conn(conn)
+
+
+@app.get("/api/contacts/status")
+def get_contact_enrichment_status():
+    return dict(_contact_progress)
+
+
+@app.get("/api/contacts/providers")
+def get_contact_provider_status():
+    return {
+        "apollo": bool(os.getenv("APOLLO_API_KEY", "").strip()),
+        "hunter": bool(os.getenv("HUNTER_API_KEY", "").strip()),
+    }
+
+
+@app.post("/api/contacts/enrich-top")
+def enrich_top_contacts(req: ContactBatchRequest, background_tasks: BackgroundTasks):
+    if _contact_progress["running"]:
+        return {"message": "Contact enrichment is already running", **dict(_contact_progress)}
+    if not os.getenv("APOLLO_API_KEY", "").strip() and not os.getenv("HUNTER_API_KEY", "").strip():
+        raise HTTPException(status_code=400, detail="Apollo and Hunter API keys are not configured")
+    background_tasks.add_task(_run_contact_batch, req.limit, req.force)
+    return {"message": f"Contact enrichment started for the top {req.limit} prospects", "count": req.limit}
+
+
+@app.post("/api/prospects/{prospect_id}/contacts/enrich")
+def enrich_prospect_contacts(prospect_id: str, force: bool = Query(False)):
+    from contact_enrichment import enrich_company_contacts
+
+    conn = get_conn()
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("""
+                SELECT pm.id AS prospect_id, l.ticker, l.company_name, l.website,
+                       pm.prospect_score, pm.lead_tier, pm.size_of_prize
+                FROM prospect_matrix pm
+                JOIN asx_listings l ON l.id = pm.listing_id
+                WHERE pm.id = %s
+            """, (prospect_id,))
+            prospect = cur.fetchone()
+        if not prospect:
+            raise HTTPException(status_code=404, detail="Prospect not found")
+        result = enrich_company_contacts(conn, prospect, force=force, allow_apollo_second=True)
+        result["contacts"] = _contact_rows(conn, prospect_id)
+        return result
+    finally:
+        put_conn(conn)
+
+
+@app.get("/api/prospects/{prospect_id}/contacts")
+def get_prospect_contacts(prospect_id: str):
+    conn = get_conn()
+    try:
+        return {"contacts": _contact_rows(conn, prospect_id)}
+    finally:
+        put_conn(conn)
+
+
+def _csv_cell(value):
+    if value is None:
+        return ""
+    text = str(value)
+    return f"'{text}" if text.startswith(("=", "+", "-", "@")) else text
+
+
+def _write_contacts_csv(rows: list[dict]) -> str:
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow([
+        "Ticker", "Company", "Rank", "Name", "Title", "Seniority",
+        "Departments", "Email", "Email Status", "Phone", "LinkedIn",
+        "Source", "Confidence", "Discovered", "Last Verified",
+    ])
+    for row in rows:
+        writer.writerow([_csv_cell(value) for value in (
+            row.get("ticker"), row.get("company_name"), row.get("decision_rank"),
+            row.get("full_name"), row.get("title"), row.get("seniority"),
+            "; ".join(row.get("departments") or []), row.get("email"),
+            row.get("email_status"), row.get("phone"), row.get("linkedin_url"),
+            row.get("source_provider"), row.get("confidence_score"),
+            row.get("discovered_at"), row.get("last_verified_at"),
+        )])
+    return output.getvalue()
+
+
+@app.get("/api/prospects/{prospect_id}/contacts/csv")
+def export_prospect_contacts_csv(prospect_id: str):
+    conn = get_conn()
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("""
+                SELECT l.ticker, l.company_name, pc.*
+                FROM prospect_contacts pc
+                JOIN prospect_matrix pm ON pm.id = pc.prospect_id
+                JOIN asx_listings l ON l.id = pm.listing_id
+                WHERE pc.prospect_id = %s AND pc.is_active = TRUE
+                ORDER BY pc.decision_rank DESC, pc.confidence_score DESC NULLS LAST
+            """, (prospect_id,))
+            rows = list(cur.fetchall())
+        if not rows:
+            raise HTTPException(status_code=404, detail="No contacts found for this prospect")
+        ticker = rows[0]["ticker"]
+        return StreamingResponse(
+            iter([_write_contacts_csv(rows)]),
+            media_type="text/csv",
+            headers={"Content-Disposition": f'attachment; filename="{ticker}_contacts.csv"'},
+        )
+    finally:
+        put_conn(conn)
+
+
+@app.get("/api/contacts/export/csv")
+def export_top_contacts_csv(limit: int = Query(50, ge=1, le=50)):
+    conn = get_conn()
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("""
+                WITH top_prospects AS (
+                    SELECT pm.id, l.ticker, l.company_name
+                    FROM prospect_matrix pm
+                    JOIN asx_listings l ON l.id = pm.listing_id
+                    WHERE l.is_active = TRUE AND l.is_target_sector = TRUE
+                      AND pm.status NOT IN ('disqualified', 'archived')
+                    ORDER BY pm.prospect_score DESC NULLS LAST,
+                             pm.size_of_prize DESC NULLS LAST,
+                             l.market_cap_aud DESC NULLS LAST
+                    LIMIT %s
+                )
+                SELECT tp.ticker, tp.company_name, pc.*
+                FROM top_prospects tp
+                JOIN prospect_contacts pc ON pc.prospect_id = tp.id
+                WHERE pc.is_active = TRUE
+                ORDER BY tp.ticker, pc.decision_rank DESC, pc.confidence_score DESC NULLS LAST
+            """, (limit,))
+            rows = list(cur.fetchall())
+        today = datetime.now().strftime("%Y%m%d")
+        return StreamingResponse(
+            iter([_write_contacts_csv(rows)]),
+            media_type="text/csv",
+            headers={"Content-Disposition": f'attachment; filename="top_{limit}_contacts_{today}.csv"'},
+        )
+    finally:
+        put_conn(conn)
+
+
 @app.get("/api/prospects/{prospect_id}")
 def get_prospect(prospect_id: str):
     """Get a single prospect with all its pressure signals."""
@@ -811,6 +1061,8 @@ def get_prospect(prospect_id: str):
             """, (prospect_id,))
             latest_v3_analysis = cur.fetchone()
 
+            contacts = _contact_rows(conn, prospect_id)
+
             try:
                 from v3_intelligence import firecrawl_is_configured
                 firecrawl_available = firecrawl_is_configured()
@@ -826,6 +1078,7 @@ def get_prospect(prospect_id: str):
                 "firecrawl_available": firecrawl_available,
                 "v3_documents": v3_documents,
                 "v3_latest_analysis": latest_v3_analysis,
+                "contacts": contacts,
             }
     finally:
         put_conn(conn)

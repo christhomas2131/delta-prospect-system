@@ -481,6 +481,8 @@ export default function DeepIntelligence() {
   const [deepJob, setDeepJob] = useState(null)
   const [isWatchlisted, setIsWatchlisted] = useState(false)
   const [pdfLoading, setPdfLoading] = useState(null) // signal ID being exported
+  const [contacts, setContacts] = useState([])
+  const [contactEnriching, setContactEnriching] = useState(false)
 
   const showToast = (ok, msg) => {
     setToast({ ok, msg })
@@ -533,6 +535,7 @@ export default function DeepIntelligence() {
       const d = await r.json()
       setProspect(d.prospect)
       setSignals(d.signals || [])
+      setContacts(d.contacts || [])
       setNotes(d.prospect.analyst_notes || '')
       setDeepAvailable(d.deep_analysis_available || false)
       setLastDeepAt(d.last_deep_analysis_at || null)
@@ -555,6 +558,7 @@ export default function DeepIntelligence() {
       // Clear detail state when navigating back
       setProspect(null)
       setSignals([])
+      setContacts([])
       setError(null)
     }
   }, [id])
@@ -684,6 +688,24 @@ export default function DeepIntelligence() {
     } catch (err) {
       showToast(false, `Request failed: ${err.message || 'network error'}`)
     }
+  }
+
+  const triggerContactEnrichment = async () => {
+    setContactEnriching(true)
+    try {
+      const r = await fetch(`/api/prospects/${id}/contacts/enrich`, { method: 'POST' })
+      const d = await r.json()
+      if (!r.ok) {
+        showToast(false, d.detail || 'Contact lookup failed')
+      } else {
+        setContacts(d.contacts || [])
+        const found = (d.added || 0) + (d.updated || 0)
+        showToast(found > 0, found > 0 ? `${found} contact${found === 1 ? '' : 's'} found` : (d.errors || []).join('; ') || 'No contacts found')
+      }
+    } catch {
+      showToast(false, 'Contact lookup failed')
+    }
+    setContactEnriching(false)
   }
 
   const copyBrief = () => {
@@ -1112,6 +1134,85 @@ export default function DeepIntelligence() {
           Status Workflow
         </div>
         <StatusStepper current={prospect.status} onChangeStatus={updateStatus} />
+      </div>
+
+      {/* Contact intelligence */}
+      <div className="card mb-4">
+        <div className="px-4 py-3 flex items-center justify-between gap-3 flex-wrap" style={{ borderBottom: '1px solid var(--border)' }}>
+          <div>
+            <span className="font-mono text-xs uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
+              Contacts ({contacts.length})
+            </span>
+            {contacts.some(c => c.email) && (
+              <span className="font-mono text-xs ml-3" style={{ color: 'var(--positive)' }}>
+                {contacts.filter(c => c.email).length} with email
+              </span>
+            )}
+          </div>
+          <div className="flex gap-2">
+            {contacts.length > 0 && (
+              <a href={`/api/prospects/${id}/contacts/csv`}
+                className="font-mono text-xs px-3 py-1.5"
+                style={{ border: '1px solid var(--border)', color: 'var(--text-secondary)', textDecoration: 'none' }}>
+                Export CSV
+              </a>
+            )}
+            <button onClick={triggerContactEnrichment} disabled={contactEnriching}
+              className="font-mono text-xs px-3 py-1.5"
+              style={{
+                background: contactEnriching ? 'var(--border)' : 'var(--accent-dim)',
+                border: '1px solid var(--accent-border)',
+                color: contactEnriching ? 'var(--text-muted)' : 'var(--text-primary)',
+                cursor: contactEnriching ? 'wait' : 'pointer',
+              }}>
+              {contactEnriching ? 'Finding...' : contacts.length > 0 ? 'Refresh Contacts' : 'Find Contacts'}
+            </button>
+          </div>
+        </div>
+        {contacts.length === 0 ? (
+          <div className="px-4 py-6 font-mono text-xs text-center" style={{ color: 'var(--text-muted)' }}>
+            No contacts loaded yet. Find the executive and operational decision-maker.
+          </div>
+        ) : (
+          <div className="table-scroll">
+            <table className="w-full" style={{ minWidth: 780 }}>
+              <thead>
+                <tr style={{ borderBottom: '1px solid var(--border)' }}>
+                  {['Fit', 'Name', 'Role', 'Email', 'Status', 'Source', 'Profile'].map(h => (
+                    <th key={h} className="px-4 py-2.5 text-left font-mono text-xs uppercase" style={{ color: 'var(--text-muted)' }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {contacts.map(contact => (
+                  <tr key={contact.id} style={{ borderBottom: '1px solid var(--border)' }}>
+                    <td className="px-4 py-2.5 font-mono text-xs" style={{ color: contact.decision_rank >= 85 ? 'var(--positive)' : 'var(--text-secondary)' }}>
+                      {contact.decision_rank || '—'}
+                    </td>
+                    <td className="px-4 py-2.5 text-sm" style={{ color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>{contact.full_name}</td>
+                    <td className="px-4 py-2.5 text-xs" style={{ color: 'var(--text-secondary)' }}>{contact.title || '—'}</td>
+                    <td className="px-4 py-2.5 font-mono text-xs">
+                      {contact.email ? (
+                        <a href={`mailto:${contact.email}`} style={{ color: 'var(--accent)' }}>{contact.email}</a>
+                      ) : <span style={{ color: 'var(--text-muted)' }}>—</span>}
+                    </td>
+                    <td className="px-4 py-2.5 font-mono text-xs" style={{ color: contact.email ? 'var(--positive)' : 'var(--text-muted)' }}>
+                      {(contact.email_status || (contact.email ? 'available' : 'missing')).replace(/_/g, ' ')}
+                    </td>
+                    <td className="px-4 py-2.5 font-mono text-xs uppercase" style={{ color: 'var(--text-muted)' }}>
+                      {contact.source_provider}
+                    </td>
+                    <td className="px-4 py-2.5 font-mono text-xs">
+                      {contact.linkedin_url ? (
+                        <a href={contact.linkedin_url} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent)' }}>LinkedIn ↗</a>
+                      ) : '—'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">

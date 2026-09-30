@@ -239,6 +239,43 @@ CREATE INDEX IF NOT EXISTS idx_prospect_score  ON prospect_matrix (prospect_scor
 CREATE INDEX IF NOT EXISTS idx_prospect_tier   ON prospect_matrix (lead_tier);
 
 -- ============================================================================
+-- PROSPECT CONTACTS - licensed business contacts from configured providers
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS prospect_contacts (
+    id                  UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    prospect_id         UUID NOT NULL REFERENCES prospect_matrix(id) ON DELETE CASCADE,
+    full_name           TEXT NOT NULL,
+    normalized_name     TEXT NOT NULL,
+    first_name          TEXT,
+    last_name           TEXT,
+    title               TEXT,
+    seniority           TEXT,
+    departments         TEXT[] NOT NULL DEFAULT '{}',
+    decision_rank       SMALLINT NOT NULL DEFAULT 0,
+    email               TEXT,
+    email_status        TEXT,
+    phone               TEXT,
+    linkedin_url        TEXT,
+    source_provider     TEXT NOT NULL,
+    source_contact_id   TEXT NOT NULL,
+    confidence_score    NUMERIC(4,3),
+    raw_data            JSONB NOT NULL DEFAULT '{}',
+    is_active           BOOLEAN NOT NULL DEFAULT TRUE,
+    discovered_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    last_verified_at    TIMESTAMPTZ,
+    updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT uq_prospect_contact_source
+        UNIQUE (prospect_id, source_provider, source_contact_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_contacts_prospect_rank
+    ON prospect_contacts (prospect_id, decision_rank DESC, confidence_score DESC NULLS LAST);
+CREATE INDEX IF NOT EXISTS idx_contacts_email
+    ON prospect_contacts (LOWER(email)) WHERE email IS NOT NULL;
+
+-- ============================================================================
 -- PRESSURE SIGNALS — the core intelligence layer (6-pillar model)
 -- ============================================================================
 
@@ -586,6 +623,7 @@ ORDER BY total_companies DESC;
 
 COMMENT ON TABLE asx_listings      IS 'Master list of companies in the ASX company directory CSV.';
 COMMENT ON TABLE prospect_matrix   IS 'Filtered/scored subset in target sectors. Core working table.';
+COMMENT ON TABLE prospect_contacts IS 'Licensed business contacts discovered for priority prospects.';
 COMMENT ON TABLE pressure_signals  IS 'Pressure signals extracted from public filings — 6-pillar model (Production, License to Operate, Cost, People, Quality, Future Readiness).';
 COMMENT ON TABLE enrichment_log    IS 'Audit trail for all automated data pulls and analysis runs.';
 COMMENT ON TABLE gics_sector_map   IS 'Reference mapping: ASX GICS industry groups → sectors & target classification.';
