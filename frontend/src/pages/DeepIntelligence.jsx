@@ -1123,6 +1123,27 @@ export default function DeepIntelligence() {
                   Download Sources
                 </button>
               )}
+              <a
+                href={`/api/prospects/${id}/report?format=pdf`}
+                title="Download full company report as PDF"
+                className="font-mono text-xs px-3 py-1.5"
+                style={{ border: '1px solid var(--accent)', color: 'var(--accent)', textDecoration: 'none' }}
+              >
+                ↓ EXPORT REPORT
+              </a>
+              {['docx', 'csv'].map(format => (
+                <a
+                  key={format}
+                  href={`/api/prospects/${id}/report?format=${format}`}
+                  title={`Download full company report as ${format.toUpperCase()}`}
+                  className="font-mono text-xs px-2 py-1.5"
+                  style={{ border: '1px solid var(--border)', color: 'var(--text-secondary)', textDecoration: 'none' }}
+                  onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--border-strong)'; e.currentTarget.style.color = 'var(--text-primary)' }}
+                  onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--text-secondary)' }}
+                >
+                  {format === 'docx' ? 'Word' : format.toUpperCase()}
+                </a>
+              ))}
             </div>
           </div>
         </div>

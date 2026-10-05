@@ -290,8 +290,13 @@ export default function LeadMatrix({ watchlistOnly = false }) {
     }
   }
 
-  const getExportUrl = () => {
+  const getExportUrl = (full = false) => {
     const p = new URLSearchParams()
+    if (full) p.set('full', 'true')
+    if (prize10mFilter) p.set('min_prize', '10000000')
+    else if (prize1mFilter) p.set('min_prize', '1000000')
+    if (australiaOnly) p.set('australia_only', 'true')
+    if (selectedCities.length > 0) p.set('city', selectedCities.join(','))
     if (search) p.set('search', search)
     if (sector) p.set('sector', sector)
     if (hasSignals) p.set('has_signals', 'true')
@@ -394,10 +399,10 @@ export default function LeadMatrix({ watchlistOnly = false }) {
                 onClick={async () => {
                   setContactRunning(true)
                   try {
-                    const r = await fetch('/api/contacts/enrich-top', {
+                    const r = await fetch('/api/contacts/enrich-all', {
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ limit: 50, force: false }),
+                      body: JSON.stringify({ force: false }),
                     })
                     const d = await r.json()
                     if (!r.ok) throw new Error(d.detail || 'Contact enrichment failed')
@@ -417,11 +422,11 @@ export default function LeadMatrix({ watchlistOnly = false }) {
                   color: contactRunning ? 'var(--text-muted)' : 'var(--gold)',
                   cursor: contactRunning ? 'wait' : 'pointer',
                 }}>
-                {contactRunning ? `CONTACTS ${contactProgress?.current || 0}/${contactProgress?.total || 50}` : 'FIND TOP 50 CONTACTS'}
+                {contactRunning ? `CONTACTS ${contactProgress?.current || 0}/${contactProgress?.total || 0}` : 'FIND ALL CONTACTS'}
               </button>
             )}
             <a
-              href="/api/contacts/export/csv?limit=50"
+              href="/api/contacts/export/csv"
               className="font-mono text-xs px-3 py-1.5"
               style={{ background: 'none', border: '1px solid var(--border-strong)', color: 'var(--text-secondary)', textDecoration: 'none' }}>
               ↓ Contacts CSV
@@ -454,7 +459,8 @@ export default function LeadMatrix({ watchlistOnly = false }) {
               {enriching && enrichProgress ? `ENRICHING ${enrichProgress.current}/${enrichProgress.total}` : enriching ? 'ENRICHING...' : hasFilters ? 'ENRICH FILTERED' : watchlistOnly ? 'ENRICH WATCHLIST' : 'ENRICH ALL'}
             </button>
             <a
-              href={getExportUrl()}
+              href="/api/prospects/export/csv?full=true"
+              title="Export every Lead Matrix company with its profile, intelligence and contact emails, across all pages"
               className="font-mono text-xs px-3 py-1.5 flex items-center gap-1.5"
               style={{
                 background: 'none',
@@ -466,7 +472,12 @@ export default function LeadMatrix({ watchlistOnly = false }) {
               onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--text-muted)'; e.currentTarget.style.color = 'var(--text-primary)' }}
               onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-strong)'; e.currentTarget.style.color = 'var(--text-secondary)' }}
             >
-              ↓ Export CSV
+              ↓ Export All Profiles + Emails
+            </a>
+            <a href={getExportUrl(true)} className="font-mono text-xs px-3 py-1.5"
+              style={{ border: '1px solid var(--border-strong)', color: 'var(--text-secondary)' }}
+              title="Export all companies matching the current filters, across all pages">
+              Export Filtered Profiles
             </a>
           </div>
         </div>
@@ -712,6 +723,7 @@ export default function LeadMatrix({ watchlistOnly = false }) {
                   <th className="px-3 py-2.5" style={{ width: 36 }} />
                   <SortHeader label="Ticker" field="ticker" sort={sort} dir={dir} onSort={handleSort} />
                   <SortHeader label="Company" field="company_name" sort={sort} dir={dir} onSort={handleSort} />
+                  <th className="px-4 py-2.5 text-left font-mono text-xs uppercase" style={{ color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>Report</th>
                   <SortHeader label="Sector" field="gics_sector" sort={sort} dir={dir} onSort={handleSort} />
                   <SortHeader label="Tier" field="lead_tier" sort={sort} dir={dir} onSort={handleSort} />
                   {showPillars && <>
@@ -732,7 +744,7 @@ export default function LeadMatrix({ watchlistOnly = false }) {
               </thead>
               <tbody>
                 {loading && (
-                  <tr><td colSpan={showPillars ? 18 : 12} className="px-4 py-8 text-center font-mono text-xs" style={{ color: 'var(--text-muted)' }}>Loading...</td></tr>
+                  <tr><td colSpan={showPillars ? 19 : 13} className="px-4 py-8 text-center font-mono text-xs" style={{ color: 'var(--text-muted)' }}>Loading...</td></tr>
                 )}
                 {!loading && data.map(p => {
                   const topSig = p.top_signal || ''
@@ -760,6 +772,18 @@ export default function LeadMatrix({ watchlistOnly = false }) {
                       <td className="px-4 py-2.5 text-sm" style={{ color: 'var(--text-primary)', maxWidth: 200 }}>
                         <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={p.company_name}>
                           {p.company_name}
+                        </div>
+                      </td>
+                      <td className="px-4 py-2.5" onClick={e => e.stopPropagation()}>
+                        <a href={`/api/prospects/${p.prospect_id}/report?format=pdf`}
+                          className="font-mono text-xs px-2 py-1"
+                          style={{ display: 'inline-block', border: '1px solid var(--accent)', color: 'var(--accent)', textDecoration: 'none', whiteSpace: 'nowrap' }}
+                          title="Download this company's full report as PDF">
+                          ↓ EXPORT REPORT
+                        </a>
+                        <div className="flex gap-2 mt-1 font-mono text-xs">
+                          <a href={`/api/prospects/${p.prospect_id}/report?format=docx`} style={{ color: 'var(--text-secondary)' }}>Word</a>
+                          <a href={`/api/prospects/${p.prospect_id}/report?format=csv`} style={{ color: 'var(--text-secondary)' }}>CSV</a>
                         </div>
                       </td>
                       {/* Sector */}

@@ -16,6 +16,7 @@ logger = logging.getLogger("contact_enrichment")
 APOLLO_SEARCH_URL = "https://api.apollo.io/api/v1/mixed_people/api_search"
 APOLLO_ENRICH_URL = "https://api.apollo.io/api/v1/people/match"
 HUNTER_DOMAIN_URL = "https://api.hunter.io/v2/domain-search"
+CONTACTS_PER_COMPANY = 2
 
 TARGET_TITLES = [
     "Chief Operating Officer",
@@ -174,24 +175,7 @@ def apollo_contact(domain: str, api_key: str, exclude_ids: set[str] | None = Non
     }
 
 
-def hunter_contact(domain: str, api_key: str) -> dict | None:
-    params = {
-        "domain": domain,
-        "api_key": api_key,
-        "type": "personal",
-        "seniority": "executive",
-        "limit": 1,
-    }
-    result = _request_json("GET", HUNTER_DOMAIN_URL, params=params)
-    emails = (result.get("data") or {}).get("emails") or []
-    if not emails:
-        # No-result searches do not consume Hunter credits. Broaden once.
-        params.pop("seniority", None)
-        result = _request_json("GET", HUNTER_DOMAIN_URL, params=params)
-        emails = (result.get("data") or {}).get("emails") or []
-    if not emails:
-        return None
-    person = emails[0]
+def _hunter_contact_record(domain: str, person: dict) -> dict:
     first_name = person.get("first_name")
     last_name = person.get("last_name")
     full_name = " ".join(part for part in (first_name, last_name) if part).strip() or None
@@ -215,6 +199,48 @@ def hunter_contact(domain: str, api_key: str) -> dict | None:
         "confidence_score": (float(confidence) / 100) if confidence is not None else 0.75,
         "raw_data": person,
     }
+
+
+def hunter_contacts(
+    domain: str,
+    api_key: str,
+    *,
+    limit: int = CONTACTS_PER_COMPANY,
+    exclude_ids: set[str] | None = None,
+) -> list[dict]:
+    excluded = exclude_ids or set()
+    params = {
+        "domain": domain,
+        "api_key": api_key,
+        "type": "personal",
+        "seniority": "executive",
+        "limit": min(10, max(limit + len(excluded), CONTACTS_PER_COMPANY)),
+    }
+    result = _request_json("GET", HUNTER_DOMAIN_URL, params=params)
+    emails = (result.get("data") or {}).get("emails") or []
+
+    # Broaden once when executive-only results cannot fill the two-contact target.
+    available_ids = {str(person.get("value") or "") for person in emails} - excluded
+    if len(available_ids) < limit:
+        params.pop("seniority", None)
+        result = _request_json("GET", HUNTER_DOMAIN_URL, params=params)
+        broad_emails = (result.get("data") or {}).get("emails") or []
+        seen = {str(person.get("value") or "") for person in emails}
+        emails.extend(person for person in broad_emails if str(person.get("value") or "") not in seen)
+
+    contacts = [_hunter_contact_record(domain, person) for person in emails]
+    contacts = [contact for contact in contacts if str(contact["source_contact_id"]) not in excluded]
+    contacts.sort(
+        key=lambda contact: title_score(contact.get("title"), contact.get("seniority")),
+        reverse=True,
+    )
+    return contacts[:limit]
+
+
+def hunter_contact(domain: str, api_key: str) -> dict | None:
+    """Backward-compatible single-result wrapper."""
+    contacts = hunter_contacts(domain, api_key, limit=1)
+    return contacts[0] if contacts else None
 
 
 def save_contact(conn, prospect_id: str, contact: dict) -> tuple[str, bool]:
@@ -312,7 +338,7 @@ def enrich_company_contacts(
     result = {
         "ticker": prospect.get("ticker"), "domain": domain,
         "added": 0, "updated": 0, "apollo_enrichments": 0,
-        "apollo_second_used": False, "errors": [],
+        "apollo_second_used": False, "skipped": False, "errors": [],
     }
     if not domain:
         result["errors"].append("Company website/domain is missing")
@@ -326,65 +352,77 @@ def enrich_company_contacts(
 
     with conn.cursor(cursor_factory=RealDictCursor) as cur:
         cur.execute(
-            "SELECT source_provider, source_contact_id FROM prospect_contacts WHERE prospect_id = %s AND is_active = TRUE",
+            "SELECT source_provider, source_contact_id, email FROM prospect_contacts WHERE prospect_id = %s AND is_active = TRUE",
             (prospect["prospect_id"],),
         )
         existing_rows = list(cur.fetchall())
-        existing_sources = {source for row in existing_rows for source in (row["source_provider"] or "").split(",")}
         apollo_ids = {
             str(row["source_contact_id"]) for row in existing_rows
             if "apollo" in (row["source_provider"] or "").split(",")
         }
+        hunter_ids = {
+            str(row["source_contact_id"]) for row in existing_rows
+            if "hunter" in (row["source_provider"] or "").split(",")
+        }
+        hunter_ids.update(str(row["email"]) for row in existing_rows if row.get("email"))
 
-    providers = []
-    if apollo_key and (force or "apollo" not in existing_sources):
-        providers.append(("apollo", lambda: apollo_contact(domain, apollo_key, apollo_ids)))
-    if hunter_key and (force or "hunter" not in existing_sources):
-        providers.append(("hunter", lambda: hunter_contact(domain, hunter_key)))
+    current_count = len(existing_rows)
+    if current_count >= CONTACTS_PER_COMPANY:
+        result["skipped"] = True
+        return result
 
-    for provider, fetch_contact in providers:
+    if hunter_key:
         try:
-            contact = fetch_contact()
-            if provider == "apollo" and contact:
-                result["apollo_enrichments"] += 1
-            if not contact:
-                result["errors"].append(f"{provider}: no matching contact")
-                continue
-            _, inserted = save_contact(conn, str(prospect["prospect_id"]), contact)
-            result["added" if inserted else "updated"] += 1
+            contacts = hunter_contacts(
+                domain,
+                hunter_key,
+                limit=CONTACTS_PER_COMPANY - current_count,
+                exclude_ids=hunter_ids,
+            )
+            for contact in contacts:
+                _, inserted = save_contact(conn, str(prospect["prospect_id"]), contact)
+                result["added" if inserted else "updated"] += 1
+                if inserted:
+                    current_count += 1
+            if not contacts:
+                result["errors"].append("hunter: no matching contact")
         except ContactProviderError as exc:
-            logger.warning("%s contact lookup failed for %s: %s", provider, prospect.get("ticker"), exc)
-            result["errors"].append(f"{provider}: {exc}")
+            logger.warning("hunter contact lookup failed for %s: %s", prospect.get("ticker"), exc)
+            result["errors"].append(f"hunter: {exc}")
         except Exception as exc:
             conn.rollback()
-            logger.exception("Unexpected %s contact failure for %s", provider, prospect.get("ticker"))
-            result["errors"].append(f"{provider}: {exc}")
+            logger.exception("Unexpected hunter contact failure for %s", prospect.get("ticker"))
+            result["errors"].append(f"hunter: {exc}")
 
-    if allow_apollo_second and apollo_key:
-        with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute(
-                "SELECT source_provider, source_contact_id FROM prospect_contacts WHERE prospect_id = %s AND is_active = TRUE",
-                (prospect["prospect_id"],),
-            )
-            current_rows = list(cur.fetchall())
-        if len(current_rows) < 2:
-            used_ids = {
-                str(row["source_contact_id"]) for row in current_rows
-                if "apollo" in (row["source_provider"] or "").split(",")
-            }
+    if apollo_key and current_count < CONTACTS_PER_COMPANY:
+        max_apollo_calls = 2 if allow_apollo_second else 1
+        for call_number in range(max_apollo_calls):
+            if current_count >= CONTACTS_PER_COMPANY:
+                break
             try:
-                contact = apollo_contact(domain, apollo_key, used_ids)
+                contact = apollo_contact(domain, apollo_key, apollo_ids)
                 if contact:
                     result["apollo_enrichments"] += 1
-                    result["apollo_second_used"] = True
+                    result["apollo_second_used"] = call_number > 0
                     _, inserted = save_contact(conn, str(prospect["prospect_id"]), contact)
                     result["added" if inserted else "updated"] += 1
+                    apollo_ids.add(str(contact["source_contact_id"]))
+                    if inserted:
+                        current_count += 1
                 else:
-                    result["errors"].append("apollo: no second matching contact")
+                    result["errors"].append("apollo: no matching contact")
+                    break
             except ContactProviderError as exc:
-                result["errors"].append(f"apollo second contact: {exc}")
+                result["errors"].append(f"apollo: {exc}")
+                break
             except Exception as exc:
                 conn.rollback()
-                logger.exception("Unexpected second Apollo contact failure for %s", prospect.get("ticker"))
-                result["errors"].append(f"apollo second contact: {exc}")
+                logger.exception("Unexpected Apollo contact failure for %s", prospect.get("ticker"))
+                result["errors"].append(f"apollo: {exc}")
+                break
+
+    if current_count < CONTACTS_PER_COMPANY:
+        result["errors"].append(
+            f"only {current_count} of {CONTACTS_PER_COMPANY} contacts found"
+        )
     return result

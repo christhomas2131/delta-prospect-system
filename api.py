@@ -410,7 +410,6 @@ class V3CollectRequest(BaseModel):
 
 
 class ContactBatchRequest(BaseModel):
-    limit: int = Field(default=50, ge=1, le=50)
     force: bool = False
 
 # ---------------------------------------------------------------------------
@@ -603,6 +602,10 @@ def export_prospects_csv(
     has_signals: Optional[bool] = Query(None),
     search: Optional[str] = Query(None),
     watchlist: Optional[bool] = Query(None),
+    full: bool = Query(False),
+    min_prize: Optional[int] = Query(None),
+    australia_only: bool = Query(False),
+    city: Optional[str] = Query(None),
 ):
     """Export all matching prospects as a CSV download (no pagination)."""
     conn = get_conn()
@@ -630,6 +633,16 @@ def export_prospects_csv(
                 where_params.extend([f"%{search}%", f"%{search}%"])
             if watchlist:
                 where_clauses.append("pm.is_watchlisted = TRUE")
+            if min_prize is not None:
+                where_clauses.append("pm.size_of_prize >= %s")
+                where_params.append(min_prize)
+            if australia_only:
+                where_clauses.append("pm.in_australia = TRUE")
+            if city:
+                cities = [value.strip() for value in city.split(',') if value.strip()]
+                if cities:
+                    where_clauses.append("pm.registered_city = ANY(%s)")
+                    where_params.append(cities)
 
             having_clauses = []
             having_params = []
@@ -653,6 +666,7 @@ def export_prospects_csv(
 
             cur.execute(f"""
                 SELECT
+                    pm.id AS prospect_id,
                     l.ticker,
                     l.company_name,
                     l.gics_sector,
@@ -696,6 +710,31 @@ def export_prospects_csv(
                     pm.prospect_score DESC NULLS LAST
             """, where_params + having_params)
             rows = cur.fetchall()
+
+        if full:
+            from company_report import display_value, report_rows
+
+            output = io.StringIO(newline='')
+            reports = [_company_report_data(conn, str(row['prospect_id'])) for row in rows]
+            records = []
+            for report in reports:
+                record = {'Ticker': report['prospect']['ticker'], 'Company Name': report['prospect']['company_name']}
+                for section, field, value in report_rows(report)[1:]:
+                    record[f'{section}: {field}'] = value
+                # Preserve stored fields beyond the human-readable report template.
+                for section, value in report.items():
+                    record[f'Complete {section} data'] = display_value(value)
+                records.append(record)
+            columns = ['Ticker', 'Company Name']
+            for record in records:
+                columns.extend(key for key in record if key not in columns)
+            writer = csv.DictWriter(output, fieldnames=columns)
+            writer.writeheader()
+            writer.writerows(records)
+            return StreamingResponse(
+                iter([output.getvalue().encode('utf-8-sig')]), media_type='text/csv',
+                headers={'Content-Disposition': 'attachment; filename="all_company_profiles_and_contacts.csv"'},
+            )
 
         def fmt_cap(cents):
             if not cents: return ""
@@ -758,21 +797,24 @@ def export_prospects_csv(
         put_conn(conn)
 
 
-def _top_contact_prospects(conn, limit: int) -> list[dict]:
+def _contact_prospects_needing_contacts(conn) -> list[dict]:
     with conn.cursor(cursor_factory=RealDictCursor) as cur:
         cur.execute("""
             SELECT pm.id AS prospect_id, l.ticker, l.company_name, l.website,
-                   pm.prospect_score, pm.lead_tier, pm.size_of_prize
+                   pm.prospect_score, pm.lead_tier, pm.size_of_prize,
+                   COUNT(pc.id) FILTER (WHERE pc.is_active = TRUE) AS active_contact_count
             FROM prospect_matrix pm
             JOIN asx_listings l ON l.id = pm.listing_id
+            LEFT JOIN prospect_contacts pc ON pc.prospect_id = pm.id
             WHERE l.is_active = TRUE
               AND l.is_target_sector = TRUE
               AND pm.status NOT IN ('disqualified', 'archived')
+            GROUP BY pm.id, l.id
+            HAVING COUNT(pc.id) FILTER (WHERE pc.is_active = TRUE) < 2
             ORDER BY pm.prospect_score DESC NULLS LAST,
                      pm.size_of_prize DESC NULLS LAST,
                      l.market_cap_aud DESC NULLS LAST
-            LIMIT %s
-        """, (limit,))
+        """)
         return list(cur.fetchall())
 
 
@@ -791,22 +833,19 @@ def _contact_rows(conn, prospect_id: str) -> list[dict]:
         return list(cur.fetchall())
 
 
-def _run_contact_batch(limit: int, force: bool):
+def _run_contact_batch(force: bool):
     from contact_enrichment import enrich_company_contacts
 
     with _contact_lock:
         _contact_progress.update({
-            "running": True, "current": 0, "total": limit, "ticker": "",
+            "running": True, "current": 0, "total": 0, "ticker": "",
             "companies_ok": 0, "contacts_added": 0, "contacts_updated": 0,
-            "failures": 0, "message": "Loading top prospects",
+            "failures": 0, "message": "Loading companies needing contacts",
         })
         conn = get_conn()
         try:
-            prospects = _top_contact_prospects(conn, limit)
+            prospects = _contact_prospects_needing_contacts(conn)
             _contact_progress["total"] = len(prospects)
-            # Apollo's free plan currently provides 75 monthly credits. Reserve
-            # one primary lookup per company, then spend at most 25 on gaps.
-            apollo_second_budget = max(0, 75 - len(prospects))
             for index, prospect in enumerate(prospects, start=1):
                 ticker = prospect["ticker"]
                 _contact_progress.update({
@@ -818,10 +857,8 @@ def _run_contact_batch(limit: int, force: bool):
                     conn,
                     prospect,
                     force=force,
-                    allow_apollo_second=apollo_second_budget > 0,
+                    allow_apollo_second=True,
                 )
-                if result.get("apollo_second_used"):
-                    apollo_second_budget -= 1
                 _contact_progress["contacts_added"] += result["added"]
                 _contact_progress["contacts_updated"] += result["updated"]
                 if result["added"] or result["updated"]:
@@ -832,7 +869,7 @@ def _run_contact_batch(limit: int, force: bool):
             _contact_progress["message"] = "Contact enrichment complete"
         except Exception as exc:
             conn.rollback()
-            logger.exception("Top prospect contact enrichment failed")
+            logger.exception("All-company contact enrichment failed")
             _contact_progress["message"] = f"Contact enrichment stopped: {exc}"
             _contact_progress["failures"] += 1
         finally:
@@ -854,14 +891,15 @@ def get_contact_provider_status():
     }
 
 
-@app.post("/api/contacts/enrich-top")
-def enrich_top_contacts(req: ContactBatchRequest, background_tasks: BackgroundTasks):
+@app.post("/api/contacts/enrich-all")
+@app.post("/api/contacts/enrich-top", include_in_schema=False)
+def enrich_all_contacts(req: ContactBatchRequest, background_tasks: BackgroundTasks):
     if _contact_progress["running"]:
         return {"message": "Contact enrichment is already running", **dict(_contact_progress)}
     if not os.getenv("APOLLO_API_KEY", "").strip() and not os.getenv("HUNTER_API_KEY", "").strip():
         raise HTTPException(status_code=400, detail="Apollo and Hunter API keys are not configured")
-    background_tasks.add_task(_run_contact_batch, req.limit, req.force)
-    return {"message": f"Contact enrichment started for the top {req.limit} prospects", "count": req.limit}
+    background_tasks.add_task(_run_contact_batch, req.force)
+    return {"message": "Contact enrichment started for every company needing contacts"}
 
 
 @app.post("/api/prospects/{prospect_id}/contacts/enrich")
@@ -951,37 +989,120 @@ def export_prospect_contacts_csv(prospect_id: str):
 
 
 @app.get("/api/contacts/export/csv")
-def export_top_contacts_csv(limit: int = Query(50, ge=1, le=50)):
+def export_all_contacts_csv():
     conn = get_conn()
     try:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute("""
-                WITH top_prospects AS (
-                    SELECT pm.id, l.ticker, l.company_name
-                    FROM prospect_matrix pm
-                    JOIN asx_listings l ON l.id = pm.listing_id
-                    WHERE l.is_active = TRUE AND l.is_target_sector = TRUE
-                      AND pm.status NOT IN ('disqualified', 'archived')
-                    ORDER BY pm.prospect_score DESC NULLS LAST,
-                             pm.size_of_prize DESC NULLS LAST,
-                             l.market_cap_aud DESC NULLS LAST
-                    LIMIT %s
-                )
-                SELECT tp.ticker, tp.company_name, pc.*
-                FROM top_prospects tp
-                JOIN prospect_contacts pc ON pc.prospect_id = tp.id
-                WHERE pc.is_active = TRUE
-                ORDER BY tp.ticker, pc.decision_rank DESC, pc.confidence_score DESC NULLS LAST
-            """, (limit,))
+                SELECT l.ticker, l.company_name, pc.*
+                FROM prospect_matrix pm
+                JOIN asx_listings l ON l.id = pm.listing_id
+                JOIN prospect_contacts pc ON pc.prospect_id = pm.id
+                WHERE l.is_active = TRUE AND l.is_target_sector = TRUE
+                  AND pm.status NOT IN ('disqualified', 'archived')
+                  AND pc.is_active = TRUE
+                ORDER BY l.ticker, pc.decision_rank DESC, pc.confidence_score DESC NULLS LAST
+            """)
             rows = list(cur.fetchall())
         today = datetime.now().strftime("%Y%m%d")
         return StreamingResponse(
             iter([_write_contacts_csv(rows)]),
             media_type="text/csv",
-            headers={"Content-Disposition": f'attachment; filename="top_{limit}_contacts_{today}.csv"'},
+            headers={"Content-Disposition": f'attachment; filename="all_contacts_{today}.csv"'},
         )
     finally:
         put_conn(conn)
+
+
+def _company_report_data(conn, prospect_id: str) -> dict:
+    """Collect all stored intelligence for a portable company report."""
+    with conn.cursor(cursor_factory=RealDictCursor) as cur:
+        cur.execute("""
+            SELECT pm.*, l.ticker, l.company_name, l.gics_sector, l.gics_industry_group,
+                   l.market_cap_aud, l.last_price_aud, l.website,
+                   l.principal_activities, l.listing_date
+            FROM prospect_matrix pm
+            JOIN asx_listings l ON l.id = pm.listing_id
+            WHERE pm.id = %s
+        """, (prospect_id,))
+        prospect = cur.fetchone()
+        if not prospect:
+            raise HTTPException(status_code=404, detail="Prospect not found")
+
+        cur.execute("""
+            SELECT * FROM pressure_signals
+            WHERE prospect_id = %s
+            ORDER BY CASE strength WHEN 'strong' THEN 1 WHEN 'moderate' THEN 2 WHEN 'weak' THEN 3 END,
+                     detected_at DESC
+        """, (prospect_id,))
+        signals = list(cur.fetchall())
+
+        cur.execute("""
+            SELECT snapshot_markdown, snapshot_data, enriched_at
+            FROM pitchbook_snapshots
+            WHERE prospect_id = %s
+            ORDER BY enriched_at DESC NULLS LAST
+            LIMIT 1
+        """, (prospect_id,))
+        snapshot = cur.fetchone()
+
+        cur.execute("""
+            SELECT analysis_type, provider, model_name, source_count, summary,
+                   output_json, completed_at
+            FROM prospect_intelligence_runs
+            WHERE prospect_id = %s
+            ORDER BY completed_at DESC NULLS LAST, created_at DESC
+            LIMIT 1
+        """, (prospect_id,))
+        v3_analysis = cur.fetchone()
+
+    return {
+        "prospect": prospect,
+        "signals": signals,
+        "contacts": _contact_rows(conn, prospect_id),
+        "snapshot": snapshot,
+        "v3_analysis": v3_analysis,
+    }
+
+
+@app.get("/api/prospects/{prospect_id}/report")
+def export_company_report(
+    prospect_id: str,
+    report_format: str = Query("pdf", alias="format"),
+):
+    """Download all stored company intelligence as a PDF, Word document, or CSV."""
+    format_key = report_format.lower().strip()
+    exporters = {
+        "pdf": ("application/pdf", "pdf", "build_pdf"),
+        "docx": ("application/vnd.openxmlformats-officedocument.wordprocessingml.document", "docx", "build_docx"),
+        "csv": ("text/csv", "csv", "build_csv"),
+    }
+    if format_key not in exporters:
+        raise HTTPException(status_code=400, detail="format must be pdf, docx, or csv")
+
+    conn = get_conn()
+    try:
+        report = _company_report_data(conn, prospect_id)
+    finally:
+        put_conn(conn)
+
+    try:
+        from company_report import build_csv, build_docx, build_pdf, safe_filename
+
+        builders = {"build_pdf": build_pdf, "build_docx": build_docx, "build_csv": build_csv}
+        media_type, extension, builder_name = exporters[format_key]
+        payload = builders[builder_name](report)
+        filename = f"{safe_filename(report['prospect'].get('ticker') or report['prospect'].get('company_name'))}_company_report.{extension}"
+        return StreamingResponse(
+            iter([payload]),
+            media_type=media_type,
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Company report export failed for %s", prospect_id)
+        raise HTTPException(status_code=500, detail=f"Company report export failed: {exc}") from exc
 
 
 @app.get("/api/prospects/{prospect_id}")
