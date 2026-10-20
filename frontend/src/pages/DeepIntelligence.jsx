@@ -1209,10 +1209,10 @@ export default function DeepIntelligence() {
           </div>
         ) : (
           <div className="table-scroll">
-            <table className="w-full" style={{ minWidth: 780 }}>
+            <table className="w-full" style={{ minWidth: 900 }}>
               <thead>
                 <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                  {['Fit', 'Name', 'Role', 'Email', 'Status', 'Source', 'Profile'].map(h => (
+                  {['Fit', 'Name', 'Role', 'Email', 'Phone', 'Status', 'Source', 'Profile'].map(h => (
                     <th key={h} className="px-4 py-2.5 text-left font-mono text-xs uppercase" style={{ color: 'var(--text-muted)' }}>{h}</th>
                   ))}
                 </tr>
@@ -1228,6 +1228,11 @@ export default function DeepIntelligence() {
                     <td className="px-4 py-2.5 font-mono text-xs">
                       {contact.email ? (
                         <a href={`mailto:${contact.email}`} style={{ color: 'var(--accent)' }}>{contact.email}</a>
+                      ) : <span style={{ color: 'var(--text-muted)' }}>—</span>}
+                    </td>
+                    <td className="px-4 py-2.5 font-mono text-xs" style={{ color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
+                      {contact.phone ? (
+                        <a href={`tel:${contact.phone}`} style={{ color: 'var(--accent)' }}>{contact.phone}</a>
                       ) : <span style={{ color: 'var(--text-muted)' }}>—</span>}
                     </td>
                     <td className="px-4 py-2.5 font-mono text-xs" style={{ color: contact.email ? 'var(--positive)' : 'var(--text-muted)' }}>

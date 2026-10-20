@@ -901,7 +901,7 @@ def _run_contact_batch(force: bool):
                 _contact_progress["contacts_updated"] += result["updated"]
                 if result["added"] or result["updated"]:
                     _contact_progress["companies_ok"] += 1
-                if result["errors"]:
+                if result.get("contact_count", 0) == 0:
                     _contact_progress["failures"] += 1
                 _contact_progress["current"] = index
             _contact_progress["message"] = "Contact enrichment complete"
