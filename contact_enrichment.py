@@ -298,7 +298,7 @@ def asx_announcement_contacts(
     *,
     domain_hint: str | None = None,
     limit: int = CONTACTS_PER_COMPANY,
-    max_announcements: int = 5,
+    max_announcements: int = 3,
 ) -> list[dict]:
     """Extract public contact emails from recent official ASX announcement PDFs."""
     try:
@@ -353,6 +353,8 @@ def asx_announcement_contacts(
                     if not previous or candidate["score"] > previous["score"]:
                         candidates[email] = candidate
                 if len(candidates) >= limit and any(item["score"] >= 100 for item in candidates.values()):
+                    break
+                if len(candidates) >= max(limit * 2, 3):
                     break
     except Exception as exc:
         logger.warning("ASX announcement contact lookup failed for %s: %s", ticker, exc)
@@ -731,6 +733,19 @@ def enrich_company_contacts(
                 result["errors"].append(f"apollo: {exc}")
                 break
 
+    if current_count < CONTACTS_PER_COMPANY:
+        contacts = asx_announcement_contacts(
+            str(prospect.get("ticker") or ""),
+            domain_hint=domain,
+            limit=CONTACTS_PER_COMPANY - current_count,
+        )
+        for contact in contacts:
+            _, inserted = save_contact(conn, str(prospect["prospect_id"]), contact)
+            result["added" if inserted else "updated"] += 1
+            result["asx_contacts"] += 1
+            if inserted:
+                current_count += 1
+
     if domain and current_count < CONTACTS_PER_COMPANY:
         try:
             public_contacts = public_website_contacts(
@@ -746,19 +761,6 @@ def enrich_company_contacts(
         except Exception as exc:
             logger.warning("Public website contact lookup failed for %s: %s", prospect.get("ticker"), exc)
             result["errors"].append(f"public website: {exc}")
-
-    if current_count < CONTACTS_PER_COMPANY:
-        contacts = asx_announcement_contacts(
-            str(prospect.get("ticker") or ""),
-            domain_hint=domain,
-            limit=CONTACTS_PER_COMPANY - current_count,
-        )
-        for contact in contacts:
-            _, inserted = save_contact(conn, str(prospect["prospect_id"]), contact)
-            result["added" if inserted else "updated"] += 1
-            result["asx_contacts"] += 1
-            if inserted:
-                current_count += 1
 
     if current_count < CONTACTS_PER_COMPANY:
         result["errors"].append(
