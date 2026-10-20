@@ -940,14 +940,9 @@ def get_contact_enrichment_status():
 @app.get("/api/contacts/providers")
 def get_contact_provider_status():
     return {
-        "apollo": {
-            "configured": bool(os.getenv("APOLLO_API_KEY", "").strip()),
-            "available_this_run": "apollo" not in (_contact_progress.get("providers_unavailable") or []),
-        },
-        "hunter": {
-            "configured": bool(os.getenv("HUNTER_API_KEY", "").strip()),
-            "available_this_run": "hunter" not in (_contact_progress.get("providers_unavailable") or []),
-        },
+        "apollo": bool(os.getenv("APOLLO_API_KEY", "").strip()),
+        "hunter": bool(os.getenv("HUNTER_API_KEY", "").strip()),
+        "providers_unavailable_this_run": _contact_progress.get("providers_unavailable") or [],
         "public_website_fallback": True,
     }
 
