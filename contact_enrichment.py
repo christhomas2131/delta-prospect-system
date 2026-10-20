@@ -358,6 +358,13 @@ def asx_announcement_contacts(
         logger.warning("ASX announcement contact lookup failed for %s: %s", ticker, exc)
         return []
 
+    domain_counts: dict[str, int] = {}
+    for email in candidates:
+        email_domain = email.rsplit("@", 1)[-1]
+        domain_counts[email_domain] = domain_counts.get(email_domain, 0) + 1
+    for email, candidate in candidates.items():
+        candidate["score"] += min(domain_counts[email.rsplit("@", 1)[-1]], 5) * 10
+
     ranked = sorted(candidates.values(), key=lambda item: item["score"], reverse=True)
     contacts = []
     for candidate in ranked[:limit]:
