@@ -5,6 +5,7 @@ import html
 import logging
 import os
 import re
+from io import BytesIO
 from datetime import datetime, timezone
 from urllib.parse import urljoin, urlparse
 
@@ -25,7 +26,11 @@ PUBLIC_CONTACT_HINTS = ("contact", "about", "team", "people", "leadership", "inv
 PUBLIC_EMAIL_RE = re.compile(r"(?<![\w.+-])[\w.+-]+@[a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)+(?![\w.-])")
 IGNORED_EMAIL_DOMAINS = {
     "example.com", "sentry.io", "wixpress.com", "wordpress.org",
-    "cloudflare.com", "google.com",
+    "cloudflare.com", "google.com", "asx.com.au", "nzx.com",
+}
+GENERIC_EMAIL_NAMES = {
+    "admin", "contact", "corporate", "enquiries", "enquiry", "hello", "info",
+    "investor", "investors", "ir", "media", "office", "support",
 }
 
 TARGET_TITLES = [
@@ -276,6 +281,113 @@ def public_website_contacts(website: str, *, limit: int = CONTACTS_PER_COMPANY) 
     return contacts
 
 
+def _name_parts_from_email(email: str) -> tuple[str | None, str | None, str]:
+    """Infer a display name only when an address clearly spells it out."""
+    local = email.split("@", 1)[0].lower()
+    parts = [part for part in re.split(r"[._-]+", local) if part]
+    if len(parts) < 2 or any(part in GENERIC_EMAIL_NAMES or not part.isalpha() for part in parts):
+        return None, None, _public_contact_title(email)
+    first_name = parts[0].title()
+    last_name = parts[-1].title()
+    full_name = " ".join(part.title() for part in parts)
+    return first_name, last_name, full_name
+
+
+def asx_announcement_contacts(
+    ticker: str,
+    *,
+    domain_hint: str | None = None,
+    limit: int = CONTACTS_PER_COMPANY,
+    max_announcements: int = 5,
+) -> list[dict]:
+    """Extract public contact emails from recent official ASX announcement PDFs."""
+    try:
+        from pypdf import PdfReader
+        from asx_browser import ASXFetcher
+    except ImportError:
+        logger.warning("ASX contact fallback unavailable because pypdf is not installed")
+        return []
+
+    candidates: dict[str, dict] = {}
+    try:
+        with ASXFetcher() as fetcher:
+            announcements = fetcher.fetch_announcements(ticker)[:max_announcements]
+        with httpx.Client(timeout=20, follow_redirects=True) as client:
+            for announcement in announcements:
+                try:
+                    response = client.get(announcement["url"])
+                    response.raise_for_status()
+                    if len(response.content) > 12_000_000:
+                        continue
+                    reader = PdfReader(BytesIO(response.content))
+                    page_count = len(reader.pages)
+                    indexes = list(range(min(page_count, 8)))
+                    indexes.extend(index for index in range(max(0, page_count - 3), page_count) if index not in indexes)
+                    text = "\n".join((reader.pages[index].extract_text() or "") for index in indexes)
+                except Exception as exc:
+                    logger.debug("ASX contact PDF skipped for %s: %s", ticker, exc)
+                    continue
+
+                for email in _public_emails(text):
+                    email_domain = email.rsplit("@", 1)[-1]
+                    if email_domain in IGNORED_EMAIL_DOMAINS:
+                        continue
+                    score = 0
+                    if domain_hint and (
+                        email_domain == domain_hint
+                        or email_domain.endswith(f".{domain_hint}")
+                        or domain_hint.endswith(f".{email_domain}")
+                    ):
+                        score += 100
+                    local = email.split("@", 1)[0].lower()
+                    if any(token in local for token in ("investor", "companysecretary", "corporate", "media")):
+                        score += 30
+                    if local in {"ir", "info", "contact", "enquiries", "hello"}:
+                        score += 20
+                    candidate = {
+                        "email": email,
+                        "score": score,
+                        "announcement": announcement,
+                    }
+                    previous = candidates.get(email)
+                    if not previous or candidate["score"] > previous["score"]:
+                        candidates[email] = candidate
+                if len(candidates) >= limit and any(item["score"] >= 100 for item in candidates.values()):
+                    break
+    except Exception as exc:
+        logger.warning("ASX announcement contact lookup failed for %s: %s", ticker, exc)
+        return []
+
+    ranked = sorted(candidates.values(), key=lambda item: item["score"], reverse=True)
+    contacts = []
+    for candidate in ranked[:limit]:
+        email = candidate["email"]
+        first_name, last_name, full_name = _name_parts_from_email(email)
+        title = _public_contact_title(email)
+        announcement = candidate["announcement"]
+        contacts.append({
+            "source_provider": "asx_announcement",
+            "source_contact_id": email,
+            "first_name": first_name,
+            "last_name": last_name,
+            "full_name": full_name,
+            "title": title,
+            "seniority": None,
+            "departments": [],
+            "email": email,
+            "email_status": "unverified",
+            "phone": None,
+            "linkedin_url": None,
+            "confidence_score": 0.80 if candidate["score"] >= 100 else 0.70,
+            "raw_data": {
+                "source_url": announcement.get("url"),
+                "source_title": announcement.get("title"),
+                "source_date": announcement.get("date"),
+            },
+        })
+    return contacts
+
+
 def apollo_candidates(domain: str, api_key: str) -> list[dict]:
     headers = {"X-Api-Key": api_key, "Content-Type": "application/json", "Accept": "application/json"}
     base_payload = {
@@ -518,7 +630,8 @@ def enrich_company_contacts(
     result = {
         "ticker": prospect.get("ticker"), "domain": domain,
         "added": 0, "updated": 0, "apollo_enrichments": 0,
-        "public_contacts": 0, "apollo_second_used": False, "skipped": False,
+        "public_contacts": 0, "asx_contacts": 0,
+        "apollo_second_used": False, "skipped": False,
         "provider_unavailable": [], "errors": [],
     }
 
@@ -553,13 +666,11 @@ def enrich_company_contacts(
 
     if not domain:
         result["errors"].append("Company website/domain is missing")
-        _record_contact_result(conn, str(prospect["prospect_id"]), result, current_count)
-        return result
 
     if not apollo_key and not hunter_key:
         result["errors"].append("Apollo and Hunter API keys are not configured")
 
-    if hunter_key and allow_hunter:
+    if domain and hunter_key and allow_hunter:
         try:
             contacts = hunter_contacts(
                 domain,
@@ -584,7 +695,7 @@ def enrich_company_contacts(
             logger.exception("Unexpected hunter contact failure for %s", prospect.get("ticker"))
             result["errors"].append(f"hunter: {exc}")
 
-    if apollo_key and allow_apollo and current_count < CONTACTS_PER_COMPANY:
+    if domain and apollo_key and allow_apollo and current_count < CONTACTS_PER_COMPANY:
         max_apollo_calls = 2 if allow_apollo_second else 1
         for call_number in range(max_apollo_calls):
             if current_count >= CONTACTS_PER_COMPANY:
@@ -613,7 +724,7 @@ def enrich_company_contacts(
                 result["errors"].append(f"apollo: {exc}")
                 break
 
-    if current_count < CONTACTS_PER_COMPANY:
+    if domain and current_count < CONTACTS_PER_COMPANY:
         try:
             public_contacts = public_website_contacts(
                 prospect["website"],
@@ -628,6 +739,19 @@ def enrich_company_contacts(
         except Exception as exc:
             logger.warning("Public website contact lookup failed for %s: %s", prospect.get("ticker"), exc)
             result["errors"].append(f"public website: {exc}")
+
+    if current_count < CONTACTS_PER_COMPANY:
+        contacts = asx_announcement_contacts(
+            str(prospect.get("ticker") or ""),
+            domain_hint=domain,
+            limit=CONTACTS_PER_COMPANY - current_count,
+        )
+        for contact in contacts:
+            _, inserted = save_contact(conn, str(prospect["prospect_id"]), contact)
+            result["added" if inserted else "updated"] += 1
+            result["asx_contacts"] += 1
+            if inserted:
+                current_count += 1
 
     if current_count < CONTACTS_PER_COMPANY:
         result["errors"].append(

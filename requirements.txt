@@ -22,6 +22,8 @@ python-dotenv==1.0.1
 # Company intelligence report exports
 reportlab==4.4.10
 python-docx==1.2.0
+pypdf==6.4.0
+cryptography==46.0.3
 
 # Timezone data for ZoneInfo (required in Docker — system tzdata not available in Playwright image)
 tzdata==2025.2

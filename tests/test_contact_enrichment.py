@@ -1,6 +1,7 @@
 import contact_enrichment
 from contact_enrichment import (
     _public_emails,
+    _name_parts_from_email,
     company_domain,
     hunter_contacts,
     normalize_name,
@@ -83,3 +84,15 @@ def test_public_email_extraction_deduplicates_and_ignores_asset_noise():
     """
 
     assert _public_emails(page) == ["investors@exampleminerals.com.au"]
+
+
+def test_email_name_inference_is_conservative():
+    assert _name_parts_from_email("sarah-jane.lawson@example.com") == (
+        "Sarah", "Lawson", "Sarah Jane Lawson",
+    )
+    assert _name_parts_from_email("investors@example.com") == (
+        None, None, "Investor relations",
+    )
+    assert _name_parts_from_email("rkairaitis@example.com") == (
+        None, None, "General company contact",
+    )
