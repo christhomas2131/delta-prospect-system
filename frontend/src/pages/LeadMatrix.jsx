@@ -422,7 +422,7 @@ export default function LeadMatrix({ watchlistOnly = false }) {
                   color: contactRunning ? 'var(--text-muted)' : 'var(--gold)',
                   cursor: contactRunning ? 'wait' : 'pointer',
                 }}>
-                {contactRunning ? `CONTACTS ${contactProgress?.current || 0}/${contactProgress?.total || 0}` : 'FIND ALL CONTACTS'}
+                {contactRunning ? `CONTACTS ${contactProgress?.current || 0}/${contactProgress?.total || 0}` : 'BACKFILL MISSING CONTACTS'}
               </button>
             )}
             <a

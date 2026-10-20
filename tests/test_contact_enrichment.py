@@ -1,5 +1,12 @@
 import contact_enrichment
-from contact_enrichment import company_domain, hunter_contacts, normalize_name, title_score
+from contact_enrichment import (
+    _public_emails,
+    company_domain,
+    hunter_contacts,
+    normalize_name,
+    snapshot_contact_records,
+    title_score,
+)
 
 
 def test_company_domain_normalizes_urls():
@@ -32,3 +39,47 @@ def test_hunter_returns_two_ranked_contacts(monkeypatch):
     contacts = hunter_contacts("example.com", "test-key", limit=2)
 
     assert [contact["email"] for contact in contacts] == ["coo@example.com", "ops@example.com"]
+
+
+def test_snapshot_management_contacts_are_normalized_for_contact_table():
+    contacts = snapshot_contact_records({
+        "management_contacts": [{
+            "name": "Alex Operator",
+            "title": "Chief Operating Officer",
+            "email": "Alex.Operator@Example.com",
+            "phone": "+61 2 0000 0000",
+            "priority": 1,
+        }]
+    })
+
+    assert contacts == [{
+        "source_provider": "snapshot",
+        "source_contact_id": "alex.operator@example.com",
+        "full_name": "Alex Operator",
+        "title": "Chief Operating Officer",
+        "seniority": None,
+        "departments": [],
+        "email": "alex.operator@example.com",
+        "email_status": "available",
+        "phone": "+61 2 0000 0000",
+        "linkedin_url": None,
+        "confidence_score": 0.95,
+        "raw_data": {
+            "name": "Alex Operator",
+            "title": "Chief Operating Officer",
+            "email": "Alex.Operator@Example.com",
+            "phone": "+61 2 0000 0000",
+            "priority": 1,
+        },
+    }]
+
+
+def test_public_email_extraction_deduplicates_and_ignores_asset_noise():
+    page = """
+        <a href="mailto:investors@exampleminerals.com.au">Contact</a>
+        INVESTORS@exampleminerals.com.au
+        tracking@sentry.io
+        logo@exampleminerals.com.au.png
+    """
+
+    assert _public_emails(page) == ["investors@exampleminerals.com.au"]

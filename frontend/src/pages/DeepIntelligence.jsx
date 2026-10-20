@@ -701,6 +701,7 @@ export default function DeepIntelligence() {
         setContacts(d.contacts || [])
         const found = (d.added || 0) + (d.updated || 0)
         showToast(found > 0, found > 0 ? `${found} contact${found === 1 ? '' : 's'} found` : (d.errors || []).join('; ') || 'No contacts found')
+        loadProspect()
       }
     } catch {
       showToast(false, 'Contact lookup failed')
@@ -1010,6 +1011,18 @@ export default function DeepIntelligence() {
     )
   }
 
+  const contactStatus = prospect.contact_enrichment_status || 'pending'
+  const contactEmptyMessage = contactStatus === 'blocked'
+    ? (prospect.contact_enrichment_error || 'Contact lookup is blocked until an official company website is available.')
+    : contactStatus === 'not_found'
+      ? 'Available provider and public website sources were checked, but no contact was found.'
+      : 'Contact lookup has not completed yet.'
+  const contactButtonLabel = contacts.length > 0
+    ? 'Refresh Contacts'
+    : ['blocked', 'not_found'].includes(contactStatus)
+      ? 'Recheck Contacts'
+      : 'Find Contacts'
+
   return (
     <div className="p-6 max-w-5xl">
       {/* Back button */}
@@ -1186,13 +1199,13 @@ export default function DeepIntelligence() {
                 color: contactEnriching ? 'var(--text-muted)' : 'var(--text-primary)',
                 cursor: contactEnriching ? 'wait' : 'pointer',
               }}>
-              {contactEnriching ? 'Finding...' : contacts.length > 0 ? 'Refresh Contacts' : 'Find Contacts'}
+              {contactEnriching ? 'Finding...' : contactButtonLabel}
             </button>
           </div>
         </div>
         {contacts.length === 0 ? (
           <div className="px-4 py-6 font-mono text-xs text-center" style={{ color: 'var(--text-muted)' }}>
-            No contacts loaded yet. Find the executive and operational decision-maker.
+            {contactEmptyMessage}
           </div>
         ) : (
           <div className="table-scroll">

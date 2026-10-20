@@ -128,6 +128,10 @@ def main():
             action = "inserted" if cur.fetchone()[0] else "updated"
         conn.commit()
 
+        from contact_enrichment import sync_snapshot_contacts
+
+        contact_stats = sync_snapshot_contacts(conn, prospect_id)
+
     finally:
         conn.close()
 
@@ -135,6 +139,7 @@ def main():
     print(f"\n  Ticker       : {ticker}")
     print(f"  Prospect ID  : {prospect_id}")
     print(f"  Action       : {action}")
+    print(f"  Contacts     : {contact_stats['added']} added, {contact_stats['updated']} reconciled")
     print(f"  Markdown len : {len(snapshot_markdown):,} chars")
 
     # 5. Verify via FastAPI endpoint

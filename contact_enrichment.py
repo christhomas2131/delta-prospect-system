@@ -1,22 +1,32 @@
-"""Contact discovery for high-priority prospects using Apollo and Hunter."""
+"""Contact discovery from saved snapshots, Hunter, Apollo, and public websites."""
 
 import hashlib
+import html
 import logging
 import os
 import re
 from datetime import datetime, timezone
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 
 import httpx
 from psycopg2.extras import Json, RealDictCursor
 
 
 logger = logging.getLogger("contact_enrichment")
+# httpx logs full query strings at INFO level. Hunter authenticates via an
+# api_key query parameter, so INFO request logging would leak credentials.
+logging.getLogger("httpx").setLevel(logging.WARNING)
 
 APOLLO_SEARCH_URL = "https://api.apollo.io/api/v1/mixed_people/api_search"
 APOLLO_ENRICH_URL = "https://api.apollo.io/api/v1/people/match"
 HUNTER_DOMAIN_URL = "https://api.hunter.io/v2/domain-search"
 CONTACTS_PER_COMPANY = 2
+PUBLIC_CONTACT_HINTS = ("contact", "about", "team", "people", "leadership", "investor", "corporate")
+PUBLIC_EMAIL_RE = re.compile(r"(?<![\w.+-])[\w.+-]+@[a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)+(?![\w.-])")
+IGNORED_EMAIL_DOMAINS = {
+    "example.com", "sentry.io", "wixpress.com", "wordpress.org",
+    "cloudflare.com", "google.com",
+}
 
 TARGET_TITLES = [
     "Chief Operating Officer",
@@ -44,7 +54,9 @@ TARGET_TITLES = [
 
 
 class ContactProviderError(RuntimeError):
-    pass
+    def __init__(self, message: str, *, code: str = "provider_error"):
+        super().__init__(message)
+        self.code = code
 
 
 def company_domain(website: str | None) -> str | None:
@@ -105,8 +117,163 @@ def _request_json(method: str, url: str, *, headers=None, params=None, payload=N
                 detail = detail.get("message", "")
         except Exception:
             detail = response.text[:200]
-        raise ContactProviderError(f"HTTP {response.status_code}: {detail or 'provider rejected request'}")
+        detail = str(detail or "provider rejected request")
+        detail_lower = detail.lower()
+        if "insufficient credits" in detail_lower or "credit limit" in detail_lower:
+            raise ContactProviderError("credits exhausted", code="credits_exhausted")
+        if response.status_code == 429:
+            raise ContactProviderError("rate limit reached", code="rate_limited")
+        raise ContactProviderError(f"HTTP {response.status_code}: {detail[:240]}")
     return response.json()
+
+
+def snapshot_contact_records(snapshot_data: dict | None) -> list[dict]:
+    """Normalize management contacts already stored in a PitchBook snapshot."""
+    records = []
+    contacts = (snapshot_data or {}).get("management_contacts") or []
+    if not isinstance(contacts, list):
+        return records
+
+    for raw in contacts:
+        if not isinstance(raw, dict):
+            continue
+        full_name = (raw.get("name") or raw.get("full_name") or "").strip()
+        title = (raw.get("title") or raw.get("role") or "").strip() or None
+        email = (raw.get("email") or "").strip().lower() or None
+        phone = (raw.get("phone") or "").strip() or None
+        linkedin_url = (raw.get("linkedin_url") or raw.get("linkedin") or "").strip() or None
+        if not any((full_name, title, email, phone, linkedin_url)):
+            continue
+        identity = email or hashlib.sha256(
+            f"{normalize_name(full_name)}:{(title or '').lower()}:{phone or ''}".encode("utf-8")
+        ).hexdigest()[:24]
+        records.append({
+            "source_provider": "snapshot",
+            "source_contact_id": identity,
+            "full_name": full_name or "Company contact",
+            "title": title,
+            "seniority": None,
+            "departments": [],
+            "email": email,
+            "email_status": "available" if email else "missing",
+            "phone": phone,
+            "linkedin_url": linkedin_url,
+            "confidence_score": 0.95 if email else 0.80,
+            "raw_data": raw,
+        })
+    return records
+
+
+def sync_snapshot_contacts(conn, prospect_id: str | None = None) -> dict:
+    """Idempotently copy snapshot management contacts into prospect_contacts."""
+    with conn.cursor(cursor_factory=RealDictCursor) as cur:
+        if prospect_id:
+            cur.execute(
+                "SELECT prospect_id, snapshot_data FROM pitchbook_snapshots WHERE prospect_id = %s",
+                (prospect_id,),
+            )
+        else:
+            cur.execute("SELECT prospect_id, snapshot_data FROM pitchbook_snapshots")
+        snapshots = list(cur.fetchall())
+
+    stats = {"snapshots": len(snapshots), "added": 0, "updated": 0}
+    for snapshot in snapshots:
+        for contact in snapshot_contact_records(snapshot.get("snapshot_data")):
+            _, inserted = save_contact(conn, str(snapshot["prospect_id"]), contact)
+            stats["added" if inserted else "updated"] += 1
+    return stats
+
+
+def _public_emails(page: str) -> list[str]:
+    found = []
+    for email in PUBLIC_EMAIL_RE.findall(html.unescape(page or "")):
+        email = email.lower().strip(".,;:!?)]}\"'")
+        domain = email.rsplit("@", 1)[-1]
+        if domain in IGNORED_EMAIL_DOMAINS or email in found:
+            continue
+        if email.endswith((".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp")):
+            continue
+        found.append(email)
+    return found
+
+
+def _public_contact_title(email: str) -> str:
+    local = email.split("@", 1)[0].lower().replace(".", "").replace("_", "")
+    if "investor" in local or local in {"ir", "investors"}:
+        return "Investor relations"
+    if "media" in local or "press" in local:
+        return "Media contact"
+    if "admin" in local or "office" in local:
+        return "Administration"
+    return "General company contact"
+
+
+def public_website_contacts(website: str, *, limit: int = CONTACTS_PER_COMPANY) -> list[dict]:
+    """Find public company inboxes on the official site as a zero-cost fallback."""
+    base_url = website.strip()
+    if not base_url.startswith(("http://", "https://")):
+        base_url = f"https://{base_url}"
+    base_host = (urlparse(base_url).hostname or "").lower()
+    headers = {"User-Agent": "Mozilla/5.0 (compatible; DeltaProspectContactCheck/1.0)"}
+    pages: list[tuple[str, str]] = []
+
+    try:
+        with httpx.Client(timeout=15, follow_redirects=True, headers=headers) as client:
+            homepage_response = client.get(base_url)
+            homepage_response.raise_for_status()
+            homepage = homepage_response.text
+            pages.append((str(homepage_response.url), homepage))
+
+            candidate_urls = []
+            for href in re.findall(r'''href=["']([^"'#?]+)["']''', homepage, flags=re.I):
+                absolute = urljoin(str(homepage_response.url), html.unescape(href))
+                parsed = urlparse(absolute)
+                if (parsed.hostname or "").lower() != (urlparse(str(homepage_response.url)).hostname or "").lower():
+                    continue
+                if any(hint in parsed.path.lower() for hint in PUBLIC_CONTACT_HINTS):
+                    if absolute not in candidate_urls:
+                        candidate_urls.append(absolute)
+            for url in candidate_urls[:5]:
+                try:
+                    response = client.get(url)
+                    response.raise_for_status()
+                    pages.append((str(response.url), response.text))
+                except httpx.HTTPError:
+                    continue
+    except httpx.HTTPError:
+        return []
+
+    discovered: dict[str, str] = {}
+    for source_url, page in pages:
+        for email in _public_emails(page):
+            email_domain = email.rsplit("@", 1)[-1]
+            # Prefer official-domain addresses. Keep external IR agencies only
+            # when there are no company-domain contacts at all.
+            if email_domain == base_host or email_domain.endswith(f".{base_host}"):
+                discovered.setdefault(email, source_url)
+    if not discovered:
+        for source_url, page in pages:
+            for email in _public_emails(page):
+                discovered.setdefault(email, source_url)
+
+    contacts = []
+    for email, source_url in list(discovered.items())[:limit]:
+        title = _public_contact_title(email)
+        contacts.append({
+            "source_provider": "public_website",
+            "source_contact_id": email,
+            "full_name": title,
+            "title": title,
+            "seniority": None,
+            "departments": [],
+            "email": email,
+            "email_status": "unverified",
+            "phone": None,
+            "linkedin_url": None,
+            "confidence_score": 0.55,
+            "raw_data": {"source_url": source_url, "official_website": base_url},
+        })
+    return contacts
 
 
 def apollo_candidates(domain: str, api_key: str) -> list[dict]:
@@ -272,6 +439,14 @@ def save_contact(conn, prospect_id: str, contact: dict) -> tuple[str, bool]:
             cur.execute(
                 """UPDATE prospect_contacts SET
                        source_provider = %s,
+                       full_name = CASE WHEN full_name IN ('Unknown', 'Company contact') THEN %s ELSE full_name END,
+                       normalized_name = CASE WHEN full_name IN ('Unknown', 'Company contact') THEN %s ELSE normalized_name END,
+                       first_name = COALESCE(first_name, %s),
+                       last_name = COALESCE(last_name, %s),
+                       title = COALESCE(title, %s),
+                       seniority = COALESCE(seniority, %s),
+                       departments = CASE WHEN CARDINALITY(departments) = 0 THEN %s ELSE departments END,
+                       decision_rank = GREATEST(decision_rank, %s),
                        email = COALESCE(email, %s),
                        email_status = CASE WHEN %s IS NOT NULL THEN %s ELSE email_status END,
                        phone = COALESCE(phone, %s),
@@ -281,7 +456,10 @@ def save_contact(conn, prospect_id: str, contact: dict) -> tuple[str, bool]:
                        updated_at = %s
                    WHERE id = %s""",
                 (
-                    ",".join(sorted(providers)), email, email, contact.get("email_status"),
+                    ",".join(sorted(providers)), full_name, normalized, first, last,
+                    contact.get("title"), contact.get("seniority"), contact.get("departments") or [],
+                    title_score(contact.get("title"), contact.get("seniority")),
+                    email, email, contact.get("email_status"),
                     contact.get("phone"), contact.get("linkedin_url"),
                     contact.get("confidence_score"), now if email else None, now, existing["id"],
                 ),
@@ -333,22 +511,23 @@ def enrich_company_contacts(
     *,
     force: bool = False,
     allow_apollo_second: bool = False,
+    allow_apollo: bool = True,
+    allow_hunter: bool = True,
 ) -> dict:
     domain = company_domain(prospect.get("website"))
     result = {
         "ticker": prospect.get("ticker"), "domain": domain,
         "added": 0, "updated": 0, "apollo_enrichments": 0,
-        "apollo_second_used": False, "skipped": False, "errors": [],
+        "public_contacts": 0, "apollo_second_used": False, "skipped": False,
+        "provider_unavailable": [], "errors": [],
     }
-    if not domain:
-        result["errors"].append("Company website/domain is missing")
-        return result
+
+    snapshot_stats = sync_snapshot_contacts(conn, str(prospect["prospect_id"]))
+    result["added"] += snapshot_stats["added"]
+    result["updated"] += snapshot_stats["updated"]
 
     apollo_key = os.getenv("APOLLO_API_KEY", "").strip()
     hunter_key = os.getenv("HUNTER_API_KEY", "").strip()
-    if not apollo_key and not hunter_key:
-        result["errors"].append("Apollo and Hunter API keys are not configured")
-        return result
 
     with conn.cursor(cursor_factory=RealDictCursor) as cur:
         cur.execute(
@@ -369,9 +548,18 @@ def enrich_company_contacts(
     current_count = len(existing_rows)
     if current_count >= CONTACTS_PER_COMPANY:
         result["skipped"] = True
+        _record_contact_result(conn, str(prospect["prospect_id"]), result, current_count)
         return result
 
-    if hunter_key:
+    if not domain:
+        result["errors"].append("Company website/domain is missing")
+        _record_contact_result(conn, str(prospect["prospect_id"]), result, current_count)
+        return result
+
+    if not apollo_key and not hunter_key:
+        result["errors"].append("Apollo and Hunter API keys are not configured")
+
+    if hunter_key and allow_hunter:
         try:
             contacts = hunter_contacts(
                 domain,
@@ -389,12 +577,14 @@ def enrich_company_contacts(
         except ContactProviderError as exc:
             logger.warning("hunter contact lookup failed for %s: %s", prospect.get("ticker"), exc)
             result["errors"].append(f"hunter: {exc}")
+            if exc.code in {"credits_exhausted", "rate_limited"}:
+                result["provider_unavailable"].append("hunter")
         except Exception as exc:
             conn.rollback()
             logger.exception("Unexpected hunter contact failure for %s", prospect.get("ticker"))
             result["errors"].append(f"hunter: {exc}")
 
-    if apollo_key and current_count < CONTACTS_PER_COMPANY:
+    if apollo_key and allow_apollo and current_count < CONTACTS_PER_COMPANY:
         max_apollo_calls = 2 if allow_apollo_second else 1
         for call_number in range(max_apollo_calls):
             if current_count >= CONTACTS_PER_COMPANY:
@@ -414,6 +604,8 @@ def enrich_company_contacts(
                     break
             except ContactProviderError as exc:
                 result["errors"].append(f"apollo: {exc}")
+                if exc.code in {"credits_exhausted", "rate_limited"}:
+                    result["provider_unavailable"].append("apollo")
                 break
             except Exception as exc:
                 conn.rollback()
@@ -422,7 +614,49 @@ def enrich_company_contacts(
                 break
 
     if current_count < CONTACTS_PER_COMPANY:
+        try:
+            public_contacts = public_website_contacts(
+                prospect["website"],
+                limit=CONTACTS_PER_COMPANY - current_count,
+            )
+            for contact in public_contacts:
+                _, inserted = save_contact(conn, str(prospect["prospect_id"]), contact)
+                result["added" if inserted else "updated"] += 1
+                result["public_contacts"] += 1
+                if inserted:
+                    current_count += 1
+        except Exception as exc:
+            logger.warning("Public website contact lookup failed for %s: %s", prospect.get("ticker"), exc)
+            result["errors"].append(f"public website: {exc}")
+
+    if current_count < CONTACTS_PER_COMPANY:
         result["errors"].append(
             f"only {current_count} of {CONTACTS_PER_COMPANY} contacts found"
         )
+    _record_contact_result(conn, str(prospect["prospect_id"]), result, current_count)
     return result
+
+
+def _record_contact_result(conn, prospect_id: str, result: dict, contact_count: int) -> None:
+    if contact_count >= CONTACTS_PER_COMPANY:
+        status = "complete"
+    elif contact_count > 0:
+        status = "partial"
+    elif not result.get("domain"):
+        status = "blocked"
+    else:
+        status = "not_found"
+    error = "; ".join(result.get("errors") or [])[:1000] or None
+    with conn.cursor() as cur:
+        cur.execute(
+            """UPDATE prospect_matrix
+               SET contact_enrichment_status = %s,
+                   contact_enrichment_attempted_at = NOW(),
+                   contact_enrichment_error = %s,
+                   updated_at = NOW()
+               WHERE id = %s""",
+            (status, error, prospect_id),
+        )
+    conn.commit()
+    result["contact_count"] = contact_count
+    result["status"] = status

@@ -86,6 +86,16 @@ DO $$ BEGIN
     END IF;
 END $$;
 
+-- v2.3 migration: persist contact backfill outcomes so the UI and scheduler
+-- can distinguish unsearched companies from genuine no-result/provider gaps.
+DO $$ BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'prospect_matrix') THEN
+        ALTER TABLE prospect_matrix ADD COLUMN IF NOT EXISTS contact_enrichment_status TEXT DEFAULT 'pending';
+        ALTER TABLE prospect_matrix ADD COLUMN IF NOT EXISTS contact_enrichment_attempted_at TIMESTAMPTZ;
+        ALTER TABLE prospect_matrix ADD COLUMN IF NOT EXISTS contact_enrichment_error TEXT;
+    END IF;
+END $$;
+
 -- ============================================================================
 -- ENUMS
 -- ============================================================================
@@ -227,6 +237,11 @@ CREATE TABLE IF NOT EXISTS prospect_matrix (
     prize_ai_assessment      TEXT,
     outreach_hypothesis      TEXT,
     red_flags                TEXT,
+
+    -- Contact population state
+    contact_enrichment_status       TEXT DEFAULT 'pending',
+    contact_enrichment_attempted_at TIMESTAMPTZ,
+    contact_enrichment_error        TEXT,
 
     created_at               TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at               TIMESTAMPTZ NOT NULL DEFAULT NOW(),

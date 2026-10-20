@@ -104,9 +104,11 @@ _contact_progress: dict = {
     "contacts_added": 0,
     "contacts_updated": 0,
     "failures": 0,
+    "providers_unavailable": [],
     "message": "",
 }
 _contact_lock = threading.Lock()
+_contact_start_lock = threading.Lock()
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -259,6 +261,24 @@ async def lifespan(app: FastAPI):
             finally:
                 db_pool.putconn(snap_conn)
             logger.info("Snapshot seeding complete (%d/%d)", seeded, len(snap_files))
+
+    # Snapshots predate the normalized contact table. Reconcile their saved
+    # management contacts on every startup so those contacts appear in the UI.
+    contact_sync_conn = db_pool.getconn()
+    try:
+        from contact_enrichment import sync_snapshot_contacts
+
+        contact_sync = sync_snapshot_contacts(contact_sync_conn)
+        logger.info(
+            "Snapshot contact sync complete (%d added, %d reconciled)",
+            contact_sync["added"],
+            contact_sync["updated"],
+        )
+    except Exception:
+        contact_sync_conn.rollback()
+        logger.exception("Snapshot contact sync failed")
+    finally:
+        db_pool.putconn(contact_sync_conn)
 
     # Auto-load Anthropic API key from environment variable if set
     env_key = os.getenv("ANTHROPIC_API_KEY", "").strip()
@@ -797,7 +817,7 @@ def export_prospects_csv(
         put_conn(conn)
 
 
-def _contact_prospects_needing_contacts(conn) -> list[dict]:
+def _contact_prospects_needing_contacts(conn, force: bool = False) -> list[dict]:
     with conn.cursor(cursor_factory=RealDictCursor) as cur:
         cur.execute("""
             SELECT pm.id AS prospect_id, l.ticker, l.company_name, l.website,
@@ -809,12 +829,17 @@ def _contact_prospects_needing_contacts(conn) -> list[dict]:
             WHERE l.is_active = TRUE
               AND l.is_target_sector = TRUE
               AND pm.status NOT IN ('disqualified', 'archived')
+              AND (
+                    %s = TRUE
+                    OR pm.contact_enrichment_attempted_at IS NULL
+                    OR pm.contact_enrichment_attempted_at < NOW() - INTERVAL '30 days'
+              )
             GROUP BY pm.id, l.id
             HAVING COUNT(pc.id) FILTER (WHERE pc.is_active = TRUE) < 2
             ORDER BY pm.prospect_score DESC NULLS LAST,
                      pm.size_of_prize DESC NULLS LAST,
                      l.market_cap_aud DESC NULLS LAST
-        """)
+        """, (force,))
         return list(cur.fetchall())
 
 
@@ -840,12 +865,15 @@ def _run_contact_batch(force: bool):
         _contact_progress.update({
             "running": True, "current": 0, "total": 0, "ticker": "",
             "companies_ok": 0, "contacts_added": 0, "contacts_updated": 0,
-            "failures": 0, "message": "Loading companies needing contacts",
+            "failures": 0, "providers_unavailable": [],
+            "message": "Loading companies needing contacts",
         })
         conn = get_conn()
         try:
-            prospects = _contact_prospects_needing_contacts(conn)
+            prospects = _contact_prospects_needing_contacts(conn, force=force)
             _contact_progress["total"] = len(prospects)
+            apollo_available = True
+            hunter_available = True
             for index, prospect in enumerate(prospects, start=1):
                 ticker = prospect["ticker"]
                 _contact_progress.update({
@@ -858,6 +886,16 @@ def _run_contact_batch(force: bool):
                     prospect,
                     force=force,
                     allow_apollo_second=True,
+                    allow_apollo=apollo_available,
+                    allow_hunter=hunter_available,
+                )
+                unavailable = set(result.get("provider_unavailable") or [])
+                if "apollo" in unavailable:
+                    apollo_available = False
+                if "hunter" in unavailable:
+                    hunter_available = False
+                _contact_progress["providers_unavailable"] = sorted(
+                    set(_contact_progress["providers_unavailable"]) | unavailable
                 )
                 _contact_progress["contacts_added"] += result["added"]
                 _contact_progress["contacts_updated"] += result["updated"]
@@ -878,6 +916,22 @@ def _run_contact_batch(force: bool):
             put_conn(conn)
 
 
+def _start_contact_batch_if_idle(force: bool = False) -> bool:
+    """Start contact reconciliation outside the request/scheduler thread."""
+    with _contact_start_lock:
+        if _contact_progress["running"]:
+            return False
+        _contact_progress.update({"running": True, "message": "Contact enrichment queued"})
+        worker = threading.Thread(
+            target=_run_contact_batch,
+            args=(force,),
+            name="contact-backfill",
+            daemon=True,
+        )
+        worker.start()
+        return True
+
+
 @app.get("/api/contacts/status")
 def get_contact_enrichment_status():
     return dict(_contact_progress)
@@ -886,19 +940,25 @@ def get_contact_enrichment_status():
 @app.get("/api/contacts/providers")
 def get_contact_provider_status():
     return {
-        "apollo": bool(os.getenv("APOLLO_API_KEY", "").strip()),
-        "hunter": bool(os.getenv("HUNTER_API_KEY", "").strip()),
+        "apollo": {
+            "configured": bool(os.getenv("APOLLO_API_KEY", "").strip()),
+            "available_this_run": "apollo" not in (_contact_progress.get("providers_unavailable") or []),
+        },
+        "hunter": {
+            "configured": bool(os.getenv("HUNTER_API_KEY", "").strip()),
+            "available_this_run": "hunter" not in (_contact_progress.get("providers_unavailable") or []),
+        },
+        "public_website_fallback": True,
     }
 
 
 @app.post("/api/contacts/enrich-all")
 @app.post("/api/contacts/enrich-top", include_in_schema=False)
-def enrich_all_contacts(req: ContactBatchRequest, background_tasks: BackgroundTasks):
-    if _contact_progress["running"]:
+def enrich_all_contacts(req: ContactBatchRequest):
+    if not _start_contact_batch_if_idle(force=req.force):
         return {"message": "Contact enrichment is already running", **dict(_contact_progress)}
     if not os.getenv("APOLLO_API_KEY", "").strip() and not os.getenv("HUNTER_API_KEY", "").strip():
-        raise HTTPException(status_code=400, detail="Apollo and Hunter API keys are not configured")
-    background_tasks.add_task(_run_contact_batch, req.force)
+        logger.info("Contact enrichment running with public website and snapshot sources only")
     return {"message": "Contact enrichment started for every company needing contacts"}
 
 
@@ -1807,6 +1867,8 @@ def _run_refresh_with_progress(triggered_by: str):
         _refresh_progress["current"] = _refresh_progress["total"]
         _refresh_progress["ticker"] = ""
         logger.info(f"Refresh complete: {len(listings)} listings")
+        if _start_contact_batch_if_idle(force=False):
+            logger.info("Started post-refresh contact reconciliation")
     except Exception as e:
         logger.exception("Refresh failed")
         _refresh_progress["phase"] = "Failed"
@@ -2640,6 +2702,9 @@ def upsert_snapshot(prospect_id: str, body: SnapshotUpsert):
             row = cur.fetchone()
             if not row:
                 raise HTTPException(status_code=404, detail="Prospect not found")
+            from contact_enrichment import sync_snapshot_contacts
+
+            sync_snapshot_contacts(conn, prospect_id)
             return row
     finally:
         put_conn(conn)
