@@ -1,6 +1,9 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { LeadTierBadge } from '../components/Badges'
+import SavedViews from '../components/SavedViews'
+import { api, makeLatest } from '../lib/api'
+import { usePoll } from '../lib/usePoll'
 
 const SECTORS = ['Energy', 'Materials', 'Industrials', 'Utilities']
 const LEAD_TIERS = [
@@ -106,7 +109,8 @@ function pillarColor(value) {
 
 export default function LeadMatrix({ watchlistOnly = false }) {
   const navigate = useNavigate()
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const latestLoad = useRef(makeLatest())
 
   const [data, setData] = useState([])
   const [total, setTotal] = useState(0)
@@ -115,66 +119,53 @@ export default function LeadMatrix({ watchlistOnly = false }) {
   const [enriching, setEnriching] = useState(false)
   const [enrichProgress, setEnrichProgress] = useState(null)
   const [toast, setToast] = useState(null)
-  const enrichPollRef = useRef(null)
   const [contactRunning, setContactRunning] = useState(false)
   const [contactProgress, setContactProgress] = useState(null)
-  const contactPollRef = useRef(null)
 
-  const startContactPolling = () => {
-    if (contactPollRef.current) return
-    contactPollRef.current = setInterval(async () => {
-      try {
-        const r = await fetch('/api/contacts/status')
-        const d = await r.json()
-        setContactProgress(d)
-        if (!d.running) {
-          clearInterval(contactPollRef.current)
-          contactPollRef.current = null
-          setContactRunning(false)
-          setToast({ ok: d.contacts_added > 0, msg: `${d.contacts_added} contacts added across ${d.companies_ok} companies` })
-          setTimeout(() => setToast(null), 8000)
-          load()
-        }
-      } catch { /* ignore polling blips */ }
-    }, 2500)
-  }
+  const loadRef = useRef(() => {})
+  const startContactPolling = () => setContactRunning(true)
+  const startPolling = () => setEnriching(true)
 
-  // Poll enrichment progress while running
-  const startPolling = () => {
-    if (enrichPollRef.current) return
-    enrichPollRef.current = setInterval(async () => {
-      try {
-        const r = await fetch('/api/enrich/status')
-        const d = await r.json()
-        setEnrichProgress(d)
-        // Keep polling while rule-based enrichment OR AI analysis is running
-        if (!d.running && !d.ai_running) {
-          clearInterval(enrichPollRef.current)
-          enrichPollRef.current = null
-          setEnriching(false)
-          const aiNote = d.ai_total > 0 ? ` + AI analysis on ${d.ai_total} top prospects` : ''
-          setToast({ ok: true, msg: `Enrichment complete — ${d.ok} enriched, ${d.skip} skipped, ${d.fail} failed${aiNote}` })
-          setTimeout(() => setToast(null), 10000)
-          setTimeout(() => setEnrichProgress(null), 10000)
-          load() // refresh the table
-        }
-      } catch { /* ignore poll errors */ }
-    }, 3000)
-  }
+  // Job-backed progress: poll while running, back off on errors, stop when finished.
+  usePoll('/api/contacts/status', {
+    interval: 2500, enabled: contactRunning,
+    onData: (d) => {
+      setContactProgress(d)
+      if (d.running) return true
+      setContactRunning(false)
+      if (d.job_status === 'succeeded') {
+        setToast({ ok: d.contacts_added > 0, msg: `${d.contacts_added} contacts added across ${d.companies_ok} companies` })
+      } else if (d.job_status) {
+        setToast({ ok: false, msg: `Contact enrichment ${d.job_status}${d.error ? `: ${d.error}` : ''}` })
+      }
+      setTimeout(() => setToast(null), 8000)
+      loadRef.current()
+      return false
+    },
+  })
+  usePoll('/api/enrich/status', {
+    interval: 3000, enabled: enriching,
+    onData: (d) => {
+      setEnrichProgress(d)
+      if (d.running || d.ai_running) return true
+      setEnriching(false)
+      if (d.job_status === 'succeeded') {
+        const aiNote = d.ai_total > 0 ? ` + AI analysis on ${d.ai_total} top prospects` : ''
+        setToast({ ok: true, msg: `Enrichment complete — ${d.ok} enriched, ${d.skip} skipped, ${d.fail} failed${aiNote}` })
+      } else if (d.job_status) {
+        setToast({ ok: false, msg: `Enrichment ${d.job_status}${d.error ? `: ${d.error}` : ''}` })
+      }
+      setTimeout(() => setToast(null), 10000)
+      setTimeout(() => setEnrichProgress(null), 10000)
+      loadRef.current()
+      return false
+    },
+  })
 
-  // Check if enrichment is already running on mount
+  // Pick up jobs already running when the page opens (survives restarts: state is in the DB)
   useEffect(() => {
-    fetch('/api/enrich/status').then(r => r.json()).then(d => {
-      if (d.running || d.ai_running) { setEnriching(true); setEnrichProgress(d); startPolling() }
-    }).catch(() => {})
-    return () => { if (enrichPollRef.current) clearInterval(enrichPollRef.current) }
-  }, [])
-
-  useEffect(() => {
-    fetch('/api/contacts/status').then(r => r.json()).then(d => {
-      if (d.running) { setContactRunning(true); setContactProgress(d); startContactPolling() }
-    }).catch(() => {})
-    return () => { if (contactPollRef.current) clearInterval(contactPollRef.current) }
+    api.get('/api/enrich/status').then(d => { if (d.running || d.ai_running) { setEnrichProgress(d); setEnriching(true) } }).catch(() => {})
+    api.get('/api/contacts/status').then(d => { if (d.running) { setContactProgress(d); setContactRunning(true) } }).catch(() => {})
   }, [])
 
   // Per-row watchlist state (for optimistic updates)
@@ -187,15 +178,16 @@ export default function LeadMatrix({ watchlistOnly = false }) {
   const [search, setSearch] = useState(searchParams.get('search') || '')
   const [sector, setSector] = useState(searchParams.get('sector') || '')
   const [leadTier, setLeadTier] = useState(searchParams.get('lead_tier') || '')
-  const [hasSignals, setHasSignals] = useState(false)
-  const [wlFilter, setWlFilter] = useState(false)
-  const [hotFilter, setHotFilter] = useState(false)
-  const [warmFilter, setWarmFilter] = useState(false)
+  const flag = (k) => searchParams.get(k) === '1'
+  const [hasSignals, setHasSignals] = useState(flag('signals'))
+  const [wlFilter, setWlFilter] = useState(flag('wl'))
+  const [hotFilter, setHotFilter] = useState(flag('hot'))
+  const [warmFilter, setWarmFilter] = useState(flag('warm'))
 
-  const [prize10mFilter, setPrize10mFilter] = useState(false)
-  const [prize1mFilter, setPrize1mFilter] = useState(false)
-  const [australiaOnly, setAustraliaOnly] = useState(false)
-  const [selectedCities, setSelectedCities] = useState([])
+  const [prize10mFilter, setPrize10mFilter] = useState(flag('p10m'))
+  const [prize1mFilter, setPrize1mFilter] = useState(flag('p1m'))
+  const [australiaOnly, setAustraliaOnly] = useState(flag('au'))
+  const [selectedCities, setSelectedCities] = useState((searchParams.get('city') || '').split(',').filter(Boolean))
   const [cityDropdownOpen, setCityDropdownOpen] = useState(false)
   const [showPillars, setShowPillars] = useState(false)
 
@@ -208,10 +200,25 @@ export default function LeadMatrix({ watchlistOnly = false }) {
     setPage(0)
   }
 
-  const [sort, setSort] = useState('total_signals')
-  const [dir, setDir] = useState('desc')
-  const [page, setPage] = useState(0)
+  const [sort, setSort] = useState(searchParams.get('sort') || 'total_signals')
+  const [dir, setDir] = useState(searchParams.get('dir') || 'desc')
+  const [page, setPage] = useState(Number(searchParams.get('page') || 0))
   const PAGE_SIZE = 50
+
+  // Mirror the filter state into the URL so a view can be bookmarked, shared or saved.
+  useEffect(() => {
+    const q = new URLSearchParams()
+    if (search) q.set('search', search)
+    if (sector) q.set('sector', sector)
+    if (leadTier) q.set('lead_tier', leadTier)
+    for (const [k, v] of [['signals', hasSignals], ['wl', wlFilter], ['hot', hotFilter], ['warm', warmFilter],
+      ['p10m', prize10mFilter], ['p1m', prize1mFilter], ['au', australiaOnly]]) if (v) q.set(k, '1')
+    if (selectedCities.length) q.set('city', selectedCities.join(','))
+    if (sort !== 'total_signals') q.set('sort', sort)
+    if (dir !== 'desc') q.set('dir', dir)
+    if (page) q.set('page', String(page))
+    if (q.toString() !== searchParams.toString()) setSearchParams(q, { replace: true })
+  }, [search, sector, leadTier, hasSignals, wlFilter, hotFilter, warmFilter, prize10mFilter, prize1mFilter, australiaOnly, selectedCities, sort, dir, page, searchParams, setSearchParams])
 
   // Load chip counts once
   useEffect(() => {
@@ -246,20 +253,20 @@ export default function LeadMatrix({ watchlistOnly = false }) {
       p.set('lead_tier', leadTier)
     }
 
+    const signal = latestLoad.current()
     try {
-      const r = await fetch(`/api/prospects?${p}`)
-      if (!r.ok) throw new Error()
-      const d = await r.json()
+      const d = await api.get(`/api/prospects?${p}`, { signal })
       setData(d.data || [])
       setTotal(d.total || 0)
-    } catch {
+    } catch (err) {
+      if (err && err.name === 'AbortError') return // superseded by a newer filter change
       setData([])
-      setError('Cannot reach the API — is the backend running?')
+      setError(err.message || 'Cannot reach the API — is the backend running?')
     }
     setLoading(false)
   }, [search, sector, leadTier, hasSignals, wlFilter, hotFilter, warmFilter, prize10mFilter, prize1mFilter, australiaOnly, selectedCities, watchlistOnly, sort, dir, page])
 
-  useEffect(() => { load() }, [load])
+  useEffect(() => { loadRef.current = load; load() }, [load])
 
   // Sync watchlisted map from freshly loaded rows
   useEffect(() => {
@@ -474,6 +481,7 @@ export default function LeadMatrix({ watchlistOnly = false }) {
             >
               ↓ Export All Profiles + Emails
             </a>
+            <SavedViews currentSearch={searchParams.toString()} onApply={(qs) => navigate(`${watchlistOnly ? '/watchlist' : '/leads'}?${qs}`)} />
             <a href={getExportUrl(true)} className="font-mono text-xs px-3 py-1.5"
               style={{ border: '1px solid var(--border-strong)', color: 'var(--text-secondary)' }}
               title="Export all companies matching the current filters, across all pages">

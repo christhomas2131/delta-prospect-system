@@ -129,6 +129,20 @@ DEFAULT_VALUES = {
     ("future_readiness",   "weak"):       50_000,
 }
 
+# ---------------------------------------------------------------------------
+# Presentation of the estimate (Phase 3)
+# ---------------------------------------------------------------------------
+# All values are AUD dollars (not cents — unlike market_cap_aud). The point
+# estimate is the "base" case; low/high bracket it with the factors below, and
+# the New Delta fee is kept separate from the client's improvement opportunity.
+PRIZE_CURRENCY = "AUD"
+PRIZE_UNIT = "dollars"
+RANGE_LOW_FACTOR = 0.5
+RANGE_HIGH_FACTOR = 2.0
+FEE_SHARE_LOW = 0.08     # typical consulting fee as a share of addressable improvement
+FEE_SHARE_HIGH = 0.20
+PRIZE_METHOD_VERSION = "prize-rules-v1.1"
+
 PILLAR_LABELS = {
     "production":         "Production",
     "license_to_operate": "License to Operate",
@@ -232,6 +246,7 @@ def calculate_size_of_prize(conn, prospect_id: str) -> dict:
                 FROM pressure_signals
                 WHERE prospect_id = %s
                   AND (is_valid IS NULL OR is_valid = TRUE)
+                  AND superseded_by IS NULL
                 ORDER BY
                     CASE strength WHEN 'strong' THEN 0 WHEN 'moderate' THEN 1 ELSE 2 END
             """, (prospect_id,))
@@ -338,6 +353,28 @@ def calculate_size_of_prize(conn, prospect_id: str) -> dict:
         "confidence_label":    confidence_label,
         "non_routine_total":   non_routine_total,
         "routine_total":       routine_total,
+        **present_estimate(total, valued, confidence),
+    }
+
+
+def present_estimate(total: int, valued: list[dict], confidence: str) -> dict:
+    """Range, units and explicit assumptions for a point estimate."""
+    low, high = int(total * RANGE_LOW_FACTOR), int(total * RANGE_HIGH_FACTOR)
+    routine_count = sum(1 for v in valued if v.get("routine"))
+    assumptions = [
+        f"Directional keyword heuristics ({PRIZE_METHOD_VERSION}); not a financial model.",
+        f"{len(valued)} signal(s) valued; {routine_count} routine filing(s) discounted to {int(ROUTINE_DISCOUNT * 100)}%.",
+        f"Range = base × {RANGE_LOW_FACTOR} to base × {RANGE_HIGH_FACTOR}; confidence '{confidence}' from the share of non-routine evidence.",
+        f"Client improvement opportunity, not New Delta revenue. Indicative fee share {int(FEE_SHARE_LOW * 100)}–{int(FEE_SHARE_HIGH * 100)}% of base.",
+        f"Values in {PRIZE_CURRENCY} {PRIZE_UNIT} (market cap elsewhere is stored in cents).",
+    ]
+    return {
+        "currency": PRIZE_CURRENCY,
+        "unit": PRIZE_UNIT,
+        "method_version": PRIZE_METHOD_VERSION,
+        "range": {"low": low, "base": total, "high": high},
+        "fee_estimate": {"low": int(total * FEE_SHARE_LOW), "high": int(total * FEE_SHARE_HIGH)},
+        "assumptions": assumptions,
     }
 
 
@@ -347,4 +384,6 @@ def _empty_result() -> dict:
         "breakdown_by_pillar": {},
         "top_3_contributors":  [],
         "deal_fit":            "small",
+        "confidence":          "low",
+        **present_estimate(0, [], "low"),
     }

@@ -1,0 +1,68 @@
+name: CI
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: delta
+          POSTGRES_PASSWORD: delta_dev
+          POSTGRES_DB: delta_prospect
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U delta -d delta_prospect"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DB_HOST: localhost
+      DB_PORT: "5432"
+      DB_NAME: delta_prospect
+      DB_USER: delta
+      DB_PASSWORD: delta_dev
+      ANTHROPIC_API_KEY: ""
+      RUN_WORKER: "false"
+      SCHEDULER_ENABLED: "false"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version-file: .python-version
+          cache: pip
+      - run: pip install -r requirements.txt pytest
+      - name: Apply migrations to a fresh database
+        run: python migrations.py && python migrations.py --status
+      - name: Unit + integration tests
+        run: pytest tests -q -p no:cacheprovider --ignore=tests/test_leaderboard_dq_filter.py
+      - name: Scoring policy comparison (shadow report on empty DB must not error)
+        run: python scripts/compare_score_policies.py --limit 5
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run lint -- --max-warnings=0
+      - run: npm test -- --run
+      - run: npm run build
+
+  docker:
+    runs-on: ubuntu-latest
+    needs: [backend, frontend]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Image builds (no push)
+        run: docker build -t delta-prospect:ci .

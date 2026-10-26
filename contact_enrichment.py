@@ -12,6 +12,8 @@ from urllib.parse import urljoin, urlparse
 import httpx
 from psycopg2.extras import Json, RealDictCursor
 
+import safe_http
+
 
 logger = logging.getLogger("contact_enrichment")
 # httpx logs full query strings at INFO level. Hunter authenticates via an
@@ -107,12 +109,35 @@ def title_score(title: str | None, seniority: str | None = None) -> int:
     return min(100, score + seniority_bonus.get((seniority or "").lower(), 0))
 
 
-def _request_json(method: str, url: str, *, headers=None, params=None, payload=None, timeout=30):
-    try:
-        with httpx.Client(timeout=timeout) as client:
-            response = client.request(method, url, headers=headers, params=params, json=payload)
-    except httpx.HTTPError as exc:
-        raise ContactProviderError(f"request failed: {exc}") from exc
+PROVIDER_RETRIES = 2
+
+
+def _request_json(method: str, url: str, *, headers=None, params=None, payload=None, timeout=30, retries: int = PROVIDER_RETRIES):
+    """Call a contact provider. Transient failures (timeouts, 5xx) are retried with
+    jittered backoff; 429 honours Retry-After once, then surfaces as rate_limited."""
+    import random
+    import time as _time
+
+    attempt = 0
+    while True:
+        try:
+            with httpx.Client(timeout=timeout) as client:
+                response = client.request(method, url, headers=headers, params=params, json=payload)
+        except httpx.HTTPError as exc:
+            if attempt >= retries:
+                raise ContactProviderError(f"request failed: {exc}") from exc
+            _time.sleep(min(2 ** attempt, 6) + random.uniform(0, 0.5))
+            attempt += 1
+            continue
+        if response.status_code == 429 and attempt < retries:
+            _time.sleep(safe_http.retry_after_seconds(response.headers.get("retry-after"), default=3.0, cap=20.0))
+            attempt += 1
+            continue
+        if response.status_code >= 500 and attempt < retries:
+            _time.sleep(min(2 ** attempt, 6) + random.uniform(0, 0.5))
+            attempt += 1
+            continue
+        break
     if response.status_code >= 400:
         detail = ""
         try:
@@ -130,6 +155,34 @@ def _request_json(method: str, url: str, *, headers=None, params=None, payload=N
             raise ContactProviderError("rate limit reached", code="rate_limited")
         raise ContactProviderError(f"HTTP {response.status_code}: {detail[:240]}")
     return response.json()
+
+
+VERIFIED_EMAIL_STATUSES = {"valid", "verified", "deliverable", "available", "accept_all"}
+UNVERIFIED_EMAIL_STATUSES = {"unverified", "unknown", "risky", None, ""}
+
+
+def classify_contact(contact: dict) -> str:
+    """Provenance label shown next to a contact so nobody mistakes a generic
+    inbox for a named, verified decision maker.
+
+    generic_inbox     — info@/investors@ style address, no person behind it
+    named_inferred    — person name guessed from an email address or filing text
+    named_verified    — provider-verified or snapshot-sourced person with usable email
+    named_unverified  — real person, email missing or not yet verified
+    """
+    email = (contact.get("email") or "").lower()
+    local = email.split("@", 1)[0] if email else ""
+    provider = (contact.get("source_provider") or "").lower()
+    name = (contact.get("full_name") or "").strip()
+    raw = contact.get("raw_data") or {}
+    if local in GENERIC_EMAIL_NAMES or (provider == "public_website" and (not name or name == contact.get("title"))):
+        return "generic_inbox"
+    if isinstance(raw, dict) and (raw.get("name_inferred") or raw.get("inferred_from_email")):
+        return "named_inferred"
+    status = (contact.get("email_status") or "").lower() or None
+    if email and (status in VERIFIED_EMAIL_STATUSES or provider in ("snapshot", "apollo", "hunter") and status not in UNVERIFIED_EMAIL_STATUSES):
+        return "named_verified"
+    return "named_unverified"
 
 
 def snapshot_contact_records(snapshot_data: dict | None) -> list[dict]:
@@ -223,9 +276,8 @@ def public_website_contacts(website: str, *, limit: int = CONTACTS_PER_COMPANY) 
     pages: list[tuple[str, str]] = []
 
     try:
-        with httpx.Client(timeout=15, follow_redirects=True, headers=headers) as client:
-            homepage_response = client.get(base_url)
-            homepage_response.raise_for_status()
+        with httpx.Client(timeout=15, follow_redirects=False, headers=headers) as client:
+            homepage_response = safe_http.fetch(base_url, client=client, retries=1)
             homepage = homepage_response.text
             pages.append((str(homepage_response.url), homepage))
 
@@ -240,12 +292,12 @@ def public_website_contacts(website: str, *, limit: int = CONTACTS_PER_COMPANY) 
                         candidate_urls.append(absolute)
             for url in candidate_urls[:5]:
                 try:
-                    response = client.get(url)
-                    response.raise_for_status()
+                    response = safe_http.fetch(url, client=client, retries=0)
                     pages.append((str(response.url), response.text))
-                except httpx.HTTPError:
+                except (safe_http.FetchError, safe_http.UnsafeURL):
                     continue
-    except httpx.HTTPError:
+    except (safe_http.FetchError, safe_http.UnsafeURL, httpx.HTTPError) as exc:
+        logger.info("public website lookup skipped for %s: %s", base_url, exc)
         return []
 
     discovered: dict[str, str] = {}
@@ -392,6 +444,7 @@ def asx_announcement_contacts(
                 "source_url": announcement.get("url"),
                 "source_title": announcement.get("title"),
                 "source_date": announcement.get("date"),
+                "inferred_from_email": first_name is not None,
             },
         })
     return contacts

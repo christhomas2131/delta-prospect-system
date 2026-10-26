@@ -71,6 +71,7 @@ def _insert_test_prospect(cur, ticker, market_cap_cents, day_volume, status="uns
 # BASELINE
 # ---------------------------------------------------------------------------
 
+@pytest.mark.skip(reason="baseline-only test: the gate is implemented now (kept for history)")
 def test_baseline_gate2_function_absent():
     """apply_gate2_dq should NOT exist before modification."""
     import importlib, asx_scraper

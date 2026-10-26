@@ -1,0 +1,23 @@
+# Never ship secrets, local data or build noise into the image
+.env
+*.env
+ANTHROPIC_API_KEY*
+backups/
+tmp/
+venv/
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+*.log
+*.backup.*
+*.dump
+files.zip
+docs/
+tests/
+frontend/node_modules/
+frontend/dist/
+.git/
+.github/
+.vscode/
+.idea/

@@ -90,6 +90,7 @@ def _insert_test_prospect(cur, ticker: str, market_cap_cents: int,
 # BASELINE tests — run these BEFORE modifying asx_scraper.py
 # ---------------------------------------------------------------------------
 
+@pytest.mark.skip(reason="baseline-only test: the gate is implemented now (kept for history)")
 def test_baseline_gate1_function_absent():
     """apply_gate1_dq should NOT exist in asx_scraper before the modification."""
     import importlib

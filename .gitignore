@@ -40,3 +40,7 @@ dist/
 build/
 *.exe
 backups/
+
+# Scratch / local test output
+tmp/
+evaluation/*.csv

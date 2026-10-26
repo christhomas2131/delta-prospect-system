@@ -30,11 +30,60 @@ def display_value(value: Any) -> str:
     return str(value)
 
 
+def _prize_summary(prospect: dict) -> str:
+    pb = prospect.get("prize_breakdown") or {}
+    if isinstance(pb, str):
+        try:
+            pb = json.loads(pb)
+        except ValueError:
+            pb = {}
+    rng = pb.get("range") or {}
+    if not rng:
+        return display_value(prospect.get("size_of_prize"))
+    fee = pb.get("fee_estimate") or {}
+    parts = [f"{pb.get('currency', 'AUD')} {rng.get('low'):,} – {rng.get('base'):,} – {rng.get('high'):,} (low/base/high)"]
+    if fee:
+        parts.append(f"indicative fee {fee.get('low'):,}–{fee.get('high'):,}")
+    if pb.get("confidence_label"):
+        parts.append(pb["confidence_label"])
+    return "; ".join(parts)
+
+
 def _fields(report: dict) -> list[tuple[str, list[tuple[str, Any]]]]:
     prospect = report["prospect"]
     v3 = report.get("v3_analysis") or {}
     snapshot = report.get("snapshot") or {}
+    research = report.get("research") or {}
+    breakdown = research.get("score_breakdown") or prospect.get("score_breakdown") or {}
+    if isinstance(breakdown, str):
+        try:
+            breakdown = json.loads(breakdown)
+        except ValueError:
+            breakdown = {}
+    pb = prospect.get("prize_breakdown") or {}
+    if isinstance(pb, str):
+        try:
+            pb = json.loads(pb)
+        except ValueError:
+            pb = {}
     return [
+        ("Research provenance", [
+            ("Report generated", research.get("generated_at")),
+            ("Research as of (last enrichment)", research.get("last_enriched_at")),
+            ("Score policy", research.get("score_policy_version") or prospect.get("score_policy_version")),
+            ("Latest evidence date", breakdown.get("latest_evidence_date")),
+            ("Days since latest evidence", breakdown.get("days_since_latest_evidence")),
+            ("Signals used / excluded", f"{breakdown.get('signals_used', '')} / {breakdown.get('signals_excluded', '')}" if breakdown else None),
+            ("Estimate assumptions", "\n".join(pb.get("assumptions") or []) or None),
+        ]),
+        ("Workflow", [
+            ("Owner", prospect.get("owner")),
+            ("Opportunity stage", prospect.get("opportunity_stage") if prospect.get("opportunity_stage") not in (None, "none") else None),
+            ("Next action", prospect.get("next_action")),
+            ("Next action due", prospect.get("next_action_due")),
+            ("Last contacted", prospect.get("last_contacted_at")),
+            ("Outcome reason", prospect.get("outcome_reason")),
+        ]),
         ("Company profile", [
             ("Company", prospect.get("company_name")),
             ("Ticker", prospect.get("ticker")),
@@ -50,7 +99,7 @@ def _fields(report: dict) -> list[tuple[str, list[tuple[str, Any]]]]:
             ("Likelihood score", prospect.get("likelihood_score")),
             ("Lead tier", prospect.get("lead_tier")),
             ("Status", prospect.get("status")),
-            ("Estimated impact", prospect.get("size_of_prize")),
+            ("Estimated impact (AUD, client improvement)", _prize_summary(prospect)),
             ("Strategic direction", prospect.get("strategic_direction")),
             ("Primary tailwind", prospect.get("primary_tailwind")),
             ("Primary headwind", prospect.get("primary_headwind")),
@@ -86,7 +135,8 @@ def report_rows(report: dict) -> list[list[str]]:
             ("Confidence", signal.get("confidence_score")),
             ("Source title", signal.get("source_title")),
             ("Source URL", signal.get("source_url")),
-            ("Source date", signal.get("source_date")),
+            ("Source date", signal.get("source_date") or "unknown"),
+            ("Verification", signal.get("verification_status")),
             ("Extracted quote", signal.get("extracted_quote")),
         ]:
             rendered = display_value(value)
@@ -106,6 +156,7 @@ def report_rows(report: dict) -> list[list[str]]:
             ("Phone", contact.get("phone")),
             ("LinkedIn", contact.get("linkedin_url")),
             ("Source", contact.get("source_provider")),
+            ("Contact type", contact.get("contact_kind")),
             ("Confidence", contact.get("confidence_score")),
             ("Last verified", contact.get("last_verified_at")),
         ]:
@@ -115,10 +166,15 @@ def report_rows(report: dict) -> list[list[str]]:
     return rows
 
 
+def csv_safe(value: str) -> str:
+    """Prefix values a spreadsheet would execute as a formula."""
+    return f"'{value}" if value and value[0] in ("=", "+", "-", "@", "\t", "\r") else value
+
+
 def build_csv(report: dict) -> bytes:
     output = io.StringIO(newline="")
     writer = csv.writer(output)
-    writer.writerows(report_rows(report))
+    writer.writerows([[csv_safe(cell) for cell in row] for row in report_rows(report)])
     return output.getvalue().encode("utf-8-sig")
 
 
@@ -179,8 +235,8 @@ def build_pdf(report: dict) -> bytes:
                 Paragraph(escape(_paragraph_text(signal.get("pressure_type"))), small),
                 Paragraph(escape(_paragraph_text(signal.get("strength"))), small),
                 Paragraph(escape(_paragraph_text(signal.get("summary"))).replace("\n", "<br/>"), small),
-                Paragraph(escape(_paragraph_text(signal.get("source_title"))), small),
-                Paragraph(escape(_paragraph_text(signal.get("source_date"))), small),
+                Paragraph(escape(_paragraph_text(signal.get("source_title"))) + (f"<br/><i>{escape(_paragraph_text(signal.get('verification_status')))}</i>" if signal.get("verification_status") else ""), small),
+                Paragraph(escape(_paragraph_text(signal.get("source_date") or "unknown")), small),
             ])
         table = Table(signal_rows, colWidths=[0.85 * inch, 0.7 * inch, 3.1 * inch, 1.35 * inch, 0.7 * inch], repeatRows=1)
         table.setStyle(TableStyle([
@@ -199,7 +255,7 @@ def build_pdf(report: dict) -> bytes:
         contact_rows = [[Paragraph("Name", small), Paragraph("Title", small), Paragraph("Email", small), Paragraph("Phone", small), Paragraph("Rank", small)]]
         for contact in contacts:
             contact_rows.append([
-                Paragraph(escape(_paragraph_text(contact.get("full_name"))), small),
+                Paragraph(escape(_paragraph_text(contact.get("full_name"))) + (f"<br/><i>{escape(_paragraph_text(contact.get('contact_kind')))}</i>" if contact.get("contact_kind") else ""), small),
                 Paragraph(escape(_paragraph_text(contact.get("title"))), small),
                 Paragraph(escape(_paragraph_text(contact.get("email"))), small),
                 Paragraph(escape(_paragraph_text(contact.get("phone"))), small),
@@ -277,8 +333,8 @@ def build_docx(report: dict) -> bytes:
             set_cell_text(cells[1], value)
 
     for section_name, records, columns in [
-        ("Pressure signals", report.get("signals") or [], [("Pillar", "pressure_type"), ("Strength", "strength"), ("Summary", "summary"), ("Source", "source_title"), ("Date", "source_date")]),
-        ("Contacts", report.get("contacts") or [], [("Name", "full_name"), ("Title", "title"), ("Email", "email"), ("Phone", "phone"), ("Rank", "decision_rank")]),
+        ("Pressure signals", report.get("signals") or [], [("Pillar", "pressure_type"), ("Strength", "strength"), ("Summary", "summary"), ("Source", "source_title"), ("Date", "source_date"), ("Verification", "verification_status")]),
+        ("Contacts", report.get("contacts") or [], [("Name", "full_name"), ("Title", "title"), ("Email", "email"), ("Phone", "phone"), ("Type", "contact_kind"), ("Rank", "decision_rank")]),
     ]:
         if not records:
             continue

@@ -29,6 +29,7 @@ import httpx
 from psycopg2.extras import RealDictCursor
 
 from asx_browser import ASXFetcher
+from ai_schema import UNTRUSTED_CONTENT_CLAUSE
 
 logger = logging.getLogger("v3_intelligence")
 
@@ -77,6 +78,7 @@ SYSTEM_PROMPT = (
     "Your job is to identify the gap between what the company said it would do and what it actually "
     "delivered, estimate the value of that gap where possible, map it to New Delta's six pillars, "
     "and produce BD-ready intelligence. Be specific, practical, and conservative when evidence is thin."
+    + UNTRUSTED_CONTENT_CLAUSE
 )
 
 
@@ -740,11 +742,11 @@ def _build_v3_prompt(
         snippet = content[: min(MAX_DOC_CHARS, remaining)]
         total_chars += len(snippet)
         doc_blocks.append(
-            f"[DOCUMENT {idx}] {doc.get('source_title') or 'Untitled'}\n"
-            f"Date: {doc.get('source_date') or 'Unknown'}\n"
-            f"Type: {doc.get('document_type') or 'announcement'}\n"
-            f"URL: {doc.get('source_url')}\n"
-            f"Content:\n{snippet}"
+            f"<document index=\"{idx}\" title=\"{(doc.get('source_title') or 'Untitled').replace(chr(34), chr(39))}\" "
+            f"date=\"{doc.get('source_date') or 'Unknown'}\" type=\"{doc.get('document_type') or 'announcement'}\" "
+            f"url=\"{doc.get('source_url')}\">\n"
+            f"{snippet}\n"
+            f"</document>"
         )
 
     prize_str = (
@@ -863,6 +865,7 @@ def run_full_document_analysis(
         return {"error": f"Claude API error: {exc}"}
 
     tokens_used = response.usage.input_tokens + response.usage.output_tokens
+    input_tokens, output_tokens = response.usage.input_tokens, response.usage.output_tokens
     if progress_callback:
         progress_callback(
             progress_pct=86,
@@ -891,6 +894,8 @@ def run_full_document_analysis(
             }
 
     result["tokens_used"] = tokens_used
+    result["input_tokens"] = input_tokens
+    result["output_tokens"] = output_tokens
     result["announcements"] = [
         {
             "title": doc.get("source_title"),
@@ -912,15 +917,25 @@ def store_intelligence_run(
     prospect_id: str,
     listing_id: str,
     result: dict,
-) -> None:
+    job_id: str | None = None,
+) -> str:
+    """Persist one analysis run (any mode) and return its id. The evidence hash
+    lets later requests reuse this run when nothing has changed."""
+    from ai_budget import estimate_cost
+
     summary = result.get("executive_summary") or result.get("prize_assessment") or result.get("outreach_hypothesis")
+    stored = {k: v for k, v in result.items() if k not in ("documents_for_validation",)}
+    in_tok = int(result.get("input_tokens") or 0)
+    out_tok = int(result.get("output_tokens") or 0)
     with conn.cursor() as cur:
         cur.execute(
             """
             INSERT INTO prospect_intelligence_runs
                 (prospect_id, listing_id, analysis_type, provider, model_name,
-                 status, source_count, summary, output_json, completed_at)
-            VALUES (%s,%s,%s,'anthropic',%s,'completed',%s,%s,%s,NOW())
+                 status, source_count, summary, output_json, completed_at,
+                 evidence_hash, job_id, input_tokens, output_tokens, estimated_cost_usd)
+            VALUES (%s,%s,%s,'anthropic',%s,'completed',%s,%s,%s,NOW(),%s,%s,%s,%s,%s)
+            RETURNING id
             """,
             (
                 prospect_id,
@@ -929,7 +944,14 @@ def store_intelligence_run(
                 result.get("model_name") or "claude-sonnet-4-6",
                 int(result.get("documents_used") or len(result.get("announcements") or [])),
                 summary,
-                json.dumps(result),
+                json.dumps(stored, default=str),
+                result.get("evidence_hash"),
+                job_id,
+                in_tok or None,
+                out_tok or None,
+                estimate_cost(in_tok, out_tok) if (in_tok or out_tok) else None,
             ),
         )
+        run_id = str(cur.fetchone()[0])
     conn.commit()
+    return run_id

@@ -1,7 +1,11 @@
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState, useRef, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { PillarBadge, StrengthBadge, StatusBadge, LeadTierBadge, PILLAR_COLORS, PILLAR_LABELS } from '../components/Badges'
 import PitchBookSnapshot from '../components/PitchBookSnapshot'
+import ScoreBreakdown from '../components/ScoreBreakdown'
+import { freshnessLabel } from '../lib/format'
+import WorkflowPanel from '../components/WorkflowPanel'
+import { api, makeLatest } from '../lib/api'
 
 const GOLD = 'var(--gold)'
 const GOLD_BG = 'var(--gold-bg)'
@@ -361,9 +365,13 @@ function RadarChart({ signals }) {
 
 // Source badge for signal origin
 function SourceBadge({ signal }) {
-  const isAI = signal.model_version === 'claude-deep-v1'
-  const isValidatedByAI = signal.validated_by === 'claude-deep-v1' && signal.is_valid === true
-  const isDisputedByAI = signal.validated_by === 'claude-deep-v1' && signal.is_valid === false
+  const vs = signal.verification_status || ''
+  const isAI = vs === 'ai_generated' || vs === 'unverified' || (signal.source_url || '').startsWith('claude-deep://') || (signal.model_version || '').startsWith('claude-deep')
+  const isValidatedByAI = vs === 'ai_confirmed' || (signal.validated_by && String(signal.validated_by).startsWith('claude-deep') && signal.is_valid === true && !isAI)
+  const isDisputedByAI = vs === 'ai_disputed' || (signal.validated_by && String(signal.validated_by).startsWith('claude-deep') && signal.is_valid === false)
+  const analyst = vs === 'analyst_confirmed' ? 'ACCEPTED' : vs === 'analyst_rejected' ? 'REJECTED' : null
+  const unverified = vs === 'unverified'
+  const superseded = vs === 'superseded'
 
   return (
     <span className="flex gap-1 flex-wrap mt-0.5">
@@ -389,6 +397,30 @@ function SourceBadge({ signal }) {
         <span className="font-mono text-xs px-1 py-0.5 leading-none"
           style={{ background: 'var(--risk-bg)', border: '1px solid var(--risk-border)', color: 'var(--risk)', fontSize: 9 }}>
           AI DISPUTED
+        </span>
+      )}
+      {unverified && (
+        <span className="font-mono text-xs px-1 py-0.5 leading-none" title="The model did not cite a document we supplied — not counted in the score"
+          style={{ background: 'var(--risk-bg)', border: '1px solid var(--risk-border)', color: 'var(--risk)', fontSize: 9 }}>
+          UNVERIFIED
+        </span>
+      )}
+      {superseded && (
+        <span className="font-mono text-xs px-1 py-0.5 leading-none" title="Duplicate of another finding"
+          style={{ border: '1px solid var(--border)', color: 'var(--text-muted)', fontSize: 9 }}>
+          SUPERSEDED
+        </span>
+      )}
+      {analyst && (
+        <span className="font-mono text-xs px-1 py-0.5 leading-none"
+          style={{ border: `1px solid ${analyst === 'ACCEPTED' ? 'var(--positive)' : 'var(--risk)'}`, color: analyst === 'ACCEPTED' ? 'var(--positive)' : 'var(--risk)', fontSize: 9 }}>
+          ANALYST {analyst}
+        </span>
+      )}
+      {signal.revision_count > 1 && (
+        <span className="font-mono text-xs px-1 py-0.5 leading-none" title="Seen in this many analysis runs"
+          style={{ border: '1px solid var(--border)', color: 'var(--text-muted)', fontSize: 9 }}>
+          ×{signal.revision_count}
         </span>
       )}
     </span>
@@ -483,6 +515,9 @@ export default function DeepIntelligence() {
   const [pdfLoading, setPdfLoading] = useState(null) // signal ID being exported
   const [contacts, setContacts] = useState([])
   const [contactEnriching, setContactEnriching] = useState(false)
+  const [activity, setActivity] = useState([])
+  const [reviewing, setReviewing] = useState(null) // signal id being accepted/rejected
+  const latestSearch = useRef(makeLatest())
 
   const showToast = (ok, msg) => {
     setToast({ ok, msg })
@@ -512,20 +547,21 @@ export default function DeepIntelligence() {
     setSearching(true)
     if (searchTimeout.current) clearTimeout(searchTimeout.current)
     searchTimeout.current = setTimeout(async () => {
+      const signal = latestSearch.current()
       try {
-        const r = await fetch(`/api/search?q=${encodeURIComponent(query.trim())}&limit=10`)
-        if (r.ok) {
-          const d = await r.json()
-          setSearchResults(d)
-        }
-      } catch { /* ignore */ }
-      setSearching(false)
+        const d = await api.get(`/api/search?q=${encodeURIComponent(query.trim())}&limit=10`, { signal })
+        setSearchResults(d)
+        setSearching(false)
+      } catch (err) {
+        if (err && err.name === 'AbortError') return // a newer search superseded this one
+        setSearching(false)
+      }
     }, 300)
     return () => { if (searchTimeout.current) clearTimeout(searchTimeout.current) }
   }, [query])
 
   // Load prospect detail
-  const loadProspect = async () => {
+  const loadProspect = useCallback(async () => {
     if (!id) return
     setLoading(true)
     setError(null)
@@ -536,6 +572,7 @@ export default function DeepIntelligence() {
       setProspect(d.prospect)
       setSignals(d.signals || [])
       setContacts(d.contacts || [])
+      setActivity(d.activity || [])
       setNotes(d.prospect.analyst_notes || '')
       setDeepAvailable(d.deep_analysis_available || false)
       setLastDeepAt(d.last_deep_analysis_at || null)
@@ -549,7 +586,7 @@ export default function DeepIntelligence() {
       }
     }
     setLoading(false)
-  }
+  }, [id])
 
   useEffect(() => {
     if (id) {
@@ -561,7 +598,7 @@ export default function DeepIntelligence() {
       setContacts([])
       setError(null)
     }
-  }, [id])
+  }, [id, loadProspect])
 
   useEffect(() => {
     if (!id) return
@@ -615,7 +652,19 @@ export default function DeepIntelligence() {
     }, 2000)
 
     return () => clearInterval(poll)
-  }, [id, deepAnalysing])
+  }, [id, deepAnalysing, loadProspect])
+
+  const reviewSignal = async (signalId, isValid) => {
+    setReviewing(signalId)
+    try {
+      const r = await api.patch(`/api/signals/${signalId}`, { is_valid: isValid, actor: 'analyst' })
+      showToast(true, `Signal ${isValid ? 'accepted' : 'rejected'} — score now ${Number(r.prospect_score).toFixed(1)}, tier ${r.lead_tier}`)
+      loadProspect()
+    } catch (err) {
+      showToast(false, err.message)
+    }
+    setReviewing(null)
+  }
 
   const saveNotes = async () => {
     setSaving(true)
@@ -1235,8 +1284,16 @@ export default function DeepIntelligence() {
                         <a href={`tel:${contact.phone}`} style={{ color: 'var(--accent)' }}>{contact.phone}</a>
                       ) : <span style={{ color: 'var(--text-muted)' }}>—</span>}
                     </td>
-                    <td className="px-4 py-2.5 font-mono text-xs" style={{ color: contact.email ? 'var(--positive)' : 'var(--text-muted)' }}>
-                      {(contact.email_status || (contact.email ? 'available' : 'missing')).replace(/_/g, ' ')}
+                    <td className="px-4 py-2.5 font-mono text-xs" style={{ color: contact.contact_kind === 'named_verified' ? 'var(--positive)' : contact.contact_kind === 'generic_inbox' ? 'var(--text-muted)' : 'var(--text-secondary)' }}>
+                      <div>{(contact.email_status || (contact.email ? 'available' : 'missing')).replace(/_/g, ' ')}</div>
+                      <div title={{
+                        generic_inbox: 'Shared company inbox, not a person',
+                        named_inferred: 'Name guessed from an email address or filing — confirm before using',
+                        named_verified: 'Named person with a provider-verified or snapshot-sourced email',
+                        named_unverified: 'Named person; email missing or not yet verified',
+                      }[contact.contact_kind] || ''} style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                        {(contact.contact_kind || '').replace(/_/g, ' ')}
+                      </div>
                     </td>
                     <td className="px-4 py-2.5 font-mono text-xs uppercase" style={{ color: 'var(--text-muted)' }}>
                       {contact.source_provider}
@@ -1310,6 +1367,8 @@ export default function DeepIntelligence() {
 
       {/* 5. Size of Prize */}
       <SizeOfPrize prospect={prospect} />
+      <ScoreBreakdown prospect={prospect} />
+      <WorkflowPanel prospect={prospect} activity={activity} onToast={showToast} onSaved={() => loadProspect()} />
 
       {/* 6. Actions */}
       <div className="card p-4 mb-4">
@@ -1479,14 +1538,15 @@ export default function DeepIntelligence() {
             <table className="w-full sticky-head" style={{ minWidth: 700 }}>
               <thead>
                 <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                  {['Pillar', 'Strength', 'Summary', 'Source', 'Confidence', 'Date', ''].map(h => (
+                  {['Pillar', 'Strength', 'Summary', 'Source', 'Confidence', 'Evidence date', 'Review', ''].map(h => (
                     <th key={h || 'actions'} className="px-4 py-2.5 text-left font-mono text-xs uppercase" style={{ color: 'var(--text-muted)' }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {signals.map(s => {
-                  const disputed = s.validated_by === 'claude-deep-v1' && s.is_valid === false
+                  const disputed = s.is_valid === false
+                  const fresh = freshnessLabel(s.evidence_age_days)
                   return (
                     <tr key={s.id}
                       style={{
@@ -1519,8 +1579,21 @@ export default function DeepIntelligence() {
                       <td className="px-4 py-2.5 font-mono text-xs" style={{ color: 'var(--text-secondary)' }}>
                         {s.confidence_score ? `${Math.round(s.confidence_score * 100)}%` : '\u2014'}
                       </td>
-                      <td className="px-4 py-2.5 font-mono text-xs" style={{ color: 'var(--text-muted)' }}>
-                        {s.source_date || '\u2014'}
+                      <td className="px-4 py-2.5 font-mono text-xs" style={{ color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                        {s.source_date || <span title="No publication date on the source">unknown</span>}
+                        {s.evidence_age_days != null && <div style={{ color: fresh.tone }}>{fresh.text}</div>}
+                      </td>
+                      <td className="px-4 py-2.5">
+                        <div className="flex items-center gap-1">
+                          <button onClick={() => reviewSignal(s.id, true)} disabled={reviewing === s.id || s.verification_status === 'analyst_confirmed'}
+                            title="Accept: counts toward the score" aria-label="Accept signal"
+                            className="font-mono text-xs px-1.5 py-0.5"
+                            style={{ color: s.verification_status === 'analyst_confirmed' ? 'var(--positive)' : 'var(--text-secondary)', border: `1px solid ${s.verification_status === 'analyst_confirmed' ? 'var(--positive)' : 'var(--border)'}`, background: 'none', cursor: 'pointer' }}>✓</button>
+                          <button onClick={() => reviewSignal(s.id, false)} disabled={reviewing === s.id || s.verification_status === 'analyst_rejected'}
+                            title="Reject: excluded from the score" aria-label="Reject signal"
+                            className="font-mono text-xs px-1.5 py-0.5"
+                            style={{ color: s.verification_status === 'analyst_rejected' ? 'var(--risk)' : 'var(--text-secondary)', border: `1px solid ${s.verification_status === 'analyst_rejected' ? 'var(--risk)' : 'var(--border)'}`, background: 'none', cursor: 'pointer' }}>✕</button>
+                        </div>
                       </td>
                       <td className="px-4 py-2.5">
                         <div className="flex items-center gap-1">

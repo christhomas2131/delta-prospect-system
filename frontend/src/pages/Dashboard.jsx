@@ -1,4 +1,12 @@
 import { useCallback, useEffect, useState, useRef } from 'react'
+import { api } from '../lib/api'
+import { usePoll } from '../lib/usePoll'
+
+function formatAiEstimate(est) {
+  if (!est) return ''
+  const budget = est.budget_usd ? ` of $${Number(est.remaining_usd).toFixed(2)} remaining this month` : ''
+  return ` · AI phase est. ~$${Number(est.est_total_usd).toFixed(2)} for ${est.companies} companies${budget}${est.within_budget ? '' : ' — OVER BUDGET, AI phase will stop'}`
+}
 import { useNavigate } from 'react-router-dom'
 
 function StatCard({ label, value, sub, color }) {
@@ -62,8 +70,6 @@ export default function Dashboard() {
   const [topLeads, setTopLeads] = useState([])
   const navigate = useNavigate()
   const intervalRef = useRef(null)
-  const enrichPollRef = useRef(null)
-  const refreshPollRef = useRef(null)
   const dataAsOf = formatDateTime(stats?.last_refresh)
   const operationsBusy = refreshing || enriching
 
@@ -94,71 +100,66 @@ export default function Dashboard() {
     }).catch(() => {})
   }, [])
 
-  const startRefreshPolling = useCallback(() => {
-    if (refreshPollRef.current) return
-    refreshPollRef.current = setInterval(async () => {
-      try {
-        const r = await fetch('/api/refresh/status')
-        const d = await r.json()
-        setRefreshProgress(d)
-        if (!d.running) {
-          clearInterval(refreshPollRef.current)
-          refreshPollRef.current = null
-          setRefreshing(false)
-          if (d.phase === 'Failed') {
-            setToast({ ok: false, msg: `Refresh failed - ${d.detail}` })
-          } else {
-            setToast({ ok: true, msg: `ASX refresh complete - ${d.detail}` })
-          }
-          setTimeout(() => setToast(null), 10000)
-          setTimeout(() => setRefreshProgress(null), 10000)
-          loadData(true)
-          loadLastRefresh()
-        }
-      } catch { /* ignore */ }
-    }, 2000)
-  }, [loadData, loadLastRefresh])
+  // Progress is job-backed (DB), so polling simply reflects the latest job and
+  // backs off automatically when the API is unreachable.
+  const startRefreshPolling = useCallback(() => setRefreshing(true), [])
+  const startEnrichPolling = useCallback(() => setEnriching(true), [])
 
-  const startEnrichPolling = useCallback(() => {
-    if (enrichPollRef.current) return
-    enrichPollRef.current = setInterval(async () => {
-      try {
-        const r = await fetch('/api/enrich/status')
-        const d = await r.json()
-        setEnrichProgress(d)
-        if (!d.running) {
-          clearInterval(enrichPollRef.current)
-          enrichPollRef.current = null
-          setEnriching(false)
-          const aiOutcome = formatAiOutcome(d)
-          setToast({
-            ok: d.fail === 0 && (d.ai_fail || 0) === 0,
-            msg: `Enrichment complete - ${d.ok} enriched, ${d.skip} skipped, ${d.fail} failed.${aiOutcome}`,
-          })
-          setTimeout(() => setToast(null), 10000)
-          setTimeout(() => setEnrichProgress(null), 10000)
-          loadData(true)
-        }
-      } catch { /* ignore */ }
-    }, 3000)
-  }, [loadData])
+  usePoll('/api/refresh/status', {
+    interval: 2000, enabled: refreshing,
+    onData: (d) => {
+      setRefreshProgress(d)
+      if (d.running) return true
+      setRefreshing(false)
+      if (d.job_status === 'failed' || d.phase === 'Failed') {
+        setToast({ ok: false, msg: `Refresh failed - ${d.detail || d.error || 'see Operations page'}` })
+      } else if (d.job_status === 'cancelled') {
+        setToast({ ok: false, msg: 'Refresh cancelled' })
+      } else if (d.job_status) {
+        setToast({ ok: true, msg: `ASX refresh complete - ${d.detail}` })
+      }
+      setTimeout(() => setToast(null), 10000)
+      setTimeout(() => setRefreshProgress(null), 10000)
+      loadData(true)
+      loadLastRefresh()
+      return false
+    },
+  })
+
+  usePoll('/api/enrich/status', {
+    interval: 3000, enabled: enriching,
+    onData: (d) => {
+      setEnrichProgress(d)
+      if (d.running || d.ai_running) return true
+      setEnriching(false)
+      if (d.job_status === 'succeeded') {
+        const aiOutcome = formatAiOutcome(d)
+        setToast({
+          ok: d.fail === 0 && (d.ai_fail || 0) === 0,
+          msg: `Enrichment complete - ${d.ok} enriched, ${d.skip} skipped, ${d.fail} failed.${aiOutcome}`,
+        })
+      } else if (d.job_status) {
+        setToast({ ok: false, msg: `Enrichment ${d.job_status}${d.error ? ` - ${d.error}` : ''}` })
+      }
+      setTimeout(() => setToast(null), 10000)
+      setTimeout(() => setEnrichProgress(null), 10000)
+      loadData(true)
+      return false
+    },
+  })
 
   useEffect(() => {
     loadData()
     loadLastRefresh()
-    fetch('/api/enrich/status').then(r => r.json()).then(d => {
-      if (d.running) { setEnriching(true); setEnrichProgress(d); startEnrichPolling() }
+    api.get('/api/enrich/status').then(d => {
+      if (d.running || d.ai_running) { setEnrichProgress(d); setEnriching(true) }
     }).catch(() => {})
-    fetch('/api/refresh/status').then(r => r.json()).then(d => {
-      if (d.running) { setRefreshing(true); setRefreshProgress(d); startRefreshPolling() }
+    api.get('/api/refresh/status').then(d => {
+      if (d.running) { setRefreshProgress(d); setRefreshing(true) }
     }).catch(() => {})
     intervalRef.current = setInterval(() => loadData(true), 60000)
-    return () => {
-      clearInterval(intervalRef.current)
-      if (enrichPollRef.current) clearInterval(enrichPollRef.current)
-      if (refreshPollRef.current) clearInterval(refreshPollRef.current)
-    }
-  }, [loadData, loadLastRefresh, startEnrichPolling, startRefreshPolling])
+    return () => clearInterval(intervalRef.current)
+  }, [loadData, loadLastRefresh])
 
   const handleRefresh = async () => {
     if (operationsBusy) return
@@ -184,7 +185,7 @@ export default function Dashboard() {
       const r = await fetch('/api/enrich/batch', { method: 'POST' })
       const d = await r.json()
       if (!r.ok) throw new Error(d.detail || d.message || 'Enrichment request failed')
-      setToast({ ok: true, msg: d.message || 'Batch enrichment started' })
+      setToast({ ok: true, msg: `${d.message || 'Batch enrichment started'}${formatAiEstimate(d.ai_estimate)}` })
       setTimeout(() => setToast(null), 5000)
       startEnrichPolling()
     } catch {
@@ -201,7 +202,7 @@ export default function Dashboard() {
       const r = await fetch('/api/enrich/batch?min_score=8&exclude_dq=true', { method: 'POST' })
       const d = await r.json()
       if (!r.ok) throw new Error(d.detail || d.message || 'Enrichment request failed')
-      setToast({ ok: true, msg: d.message || 'Top leads enrichment started' })
+      setToast({ ok: true, msg: `${d.message || 'Top leads enrichment started'}${formatAiEstimate(d.ai_estimate)}` })
       setTimeout(() => setToast(null), 5000)
       startEnrichPolling()
     } catch {

@@ -608,7 +608,12 @@ def apply_gate1_dq(conn) -> int:
             UPDATE prospect_matrix pm
             SET
                 status    = 'disqualified',
-                dq_reason = 'Phase 0 Gate 1: market cap AUD below $5M floor (auto-DQ)'
+                dq_reason = 'Phase 0 Gate 1: market cap AUD below $5M floor (auto-DQ)',
+                dq_reason_code = 'gate1_market_cap',
+                dq_applied_at = NOW(),
+                dq_observed_cap_cents = l.market_cap_aud,
+                dq_observed_volume = l.day_volume,
+                status_changed_by = 'gate1'
             FROM asx_listings l
             WHERE l.id = pm.listing_id
               AND l.market_cap_aud > 0
@@ -639,7 +644,12 @@ def apply_gate2_dq(conn) -> int:
             UPDATE prospect_matrix pm
             SET
                 status    = 'disqualified',
-                dq_reason = 'Phase 0 Gate 2: zero trading volume + market cap AUD below $50M floor (auto-DQ)'
+                dq_reason = 'Phase 0 Gate 2: zero trading volume + market cap AUD below $50M floor (auto-DQ)',
+                dq_reason_code = 'gate2_zero_volume',
+                dq_applied_at = NOW(),
+                dq_observed_cap_cents = l.market_cap_aud,
+                dq_observed_volume = l.day_volume,
+                status_changed_by = 'gate2'
             FROM asx_listings l
             WHERE l.id = pm.listing_id
               AND l.day_volume = 0
@@ -671,7 +681,8 @@ def update_company_detail(conn, ticker: str, detail: dict, triggered_by: str) ->
                 registered_country=%s,
                 location_source=%s,
                 location_confidence=%s,
-                last_refreshed_at=NOW()
+                last_refreshed_at=NOW(),
+                detail_fetched_at=NOW()
             WHERE ticker=%s
         """, (
             detail["listing_date"],

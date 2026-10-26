@@ -17,6 +17,7 @@ import re
 import time
 
 from asx_browser import ASXFetcher
+from ai_schema import UNTRUSTED_CONTENT_CLAUSE
 
 logger = logging.getLogger("deep_analysis")
 
@@ -27,6 +28,7 @@ SYSTEM_PROMPT = (
     "Cost, People, Quality, and Future Readiness challenges. "
     "Be direct, specific, and commercially minded. Reference actual announcements, not generic "
     "industry trends. This analysis is for internal use by New Delta's business development team."
+    + UNTRUSTED_CONTENT_CLAUSE
 )
 
 
@@ -40,7 +42,7 @@ def _build_prompt(
     deal_fit: str = "",
 ) -> str:
     ann_lines = "\n".join(
-        f"  [{a.get('date', '?')[:10]}] {a.get('title', '')}"
+        f"  <announcement date=\"{a.get('date', '?')[:10]}\">{a.get('title', '')}</announcement>"
         for a in announcements
     ) or "  (none available)"
 
@@ -156,6 +158,7 @@ def run_deep_analysis(
         return {"error": f"Claude API error: {exc}"}
 
     tokens_used = response.usage.input_tokens + response.usage.output_tokens
+    input_tokens, output_tokens = response.usage.input_tokens, response.usage.output_tokens
     raw = response.content[0].text.strip()
 
     # Strip markdown fences if Claude wrapped the JSON
@@ -175,7 +178,12 @@ def run_deep_analysis(
             return {"error": f"Claude returned non-JSON response: {raw[:300]}"}
 
     result["tokens_used"] = tokens_used
+    result["input_tokens"] = input_tokens
+    result["output_tokens"] = output_tokens
     result["announcements"] = announcements
+    result["documents_for_validation"] = [
+        {"id": None, "title": a.get("title"), "url": a.get("url")} for a in announcements
+    ]
     result["analysis_mode"] = "announcement_headlines"
     result["analysis_version"] = "claude-deep-v1"
     result["model_name"] = "claude-sonnet-4-6"

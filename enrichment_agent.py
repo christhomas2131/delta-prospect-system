@@ -26,6 +26,7 @@ try:
     from asx_browser import ASXFetcher
 except ImportError:
     ASXFetcher = None
+from evidence import evidence_key
 
 # ---------------------------------------------------------------------------
 # Config
@@ -553,18 +554,23 @@ def save_results(conn, prospect, signals, profile, announcements, principal_acti
                     INSERT INTO pressure_signals
                         (prospect_id, pressure_type, strength, summary,
                          source_type, source_url, source_title, source_date,
-                         confidence_score, model_version, extracted_quote)
-                    VALUES (%s,%s,%s,%s,'asx_announcement',%s,%s,%s,%s,%s,%s)
-                    ON CONFLICT (prospect_id, pressure_type, source_url) DO NOTHING
+                         confidence_score, model_version, extracted_quote,
+                         evidence_key, verification_status, last_seen_at)
+                    VALUES (%s,%s,%s,%s,'asx_announcement',%s,%s,%s,%s,%s,%s,%s,'rule_matched',NOW())
+                    ON CONFLICT (prospect_id, pressure_type, source_url) DO UPDATE SET
+                        last_seen_at = NOW(),
+                        revision_count = pressure_signals.revision_count + 1
+                    RETURNING (xmax = 0) AS inserted_row
                 """, (pid, pt, st, s["summary"], s.get("source_url"),
                       s.get("source_title"), s.get("source_date") or None,
-                      s["confidence"], "rule-engine-v2", s.get("extracted_quote")))
-                inserted += cur.rowcount
+                      s["confidence"], "rule-engine-v2", s.get("extracted_quote"),
+                      evidence_key(tk, pt, s["summary"])))
+                row = cur.fetchone()
+                inserted += 1 if row and row[0] else 0
             except Exception as e:
                 logger.error(f"{tk}: {e}")
 
         lk = max(1, min(10, int(profile["likelihood_score"])))
-        lead_tier = calculate_lead_tier(signals)
         loc = _detect_location(principal_activities)
 
         cur.execute("""
@@ -573,7 +579,6 @@ def save_results(conn, prospect, signals, profile, announcements, principal_acti
                 primary_tailwind=COALESCE(%s,primary_tailwind),
                 primary_headwind=COALESCE(%s,primary_headwind),
                 likelihood_score=COALESCE(%s,likelihood_score),
-                lead_tier=%s,
                 registered_city=COALESCE(%s,registered_city),
                 registered_state=COALESCE(%s,registered_state),
                 in_australia=%s,
@@ -582,11 +587,15 @@ def save_results(conn, prospect, signals, profile, announcements, principal_acti
                 status_changed_by='enrichment_agent'
             WHERE id=%s
         """, (profile["strategic_direction"], profile["primary_tailwind"],
-              profile["primary_headwind"], lk, lead_tier,
+              profile["primary_headwind"], lk,
               loc["city"], loc["state"], loc["in_australia"], pid))
 
+        # Score and tier are both derived from the persisted, valid, non-superseded
+        # signal set (not from this batch alone) so they can never disagree.
         cur.execute("SELECT calculate_prospect_score(%s)", (pid,))
         score = cur.fetchone()[0]
+        cur.execute("SELECT calculate_lead_tier(%s)", (pid,))
+        lead_tier = cur.fetchone()[0]
 
         # Calculate Size of Prize — runs in same transaction so uncommitted
         # signals are visible to the query

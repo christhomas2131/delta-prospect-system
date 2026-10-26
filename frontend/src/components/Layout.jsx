@@ -4,8 +4,10 @@ import { useEffect, useState } from 'react'
 const NAV = [
   { to: '/', label: 'Dashboard', icon: '\u25C6' },
   { to: '/leads', label: 'Lead Matrix', icon: '\u25A6' },
+  { to: '/review', label: 'Review Queue', icon: '\u2611' },
   { to: '/deep-intelligence', label: 'Deep Intelligence', icon: '\u25C8' },
   { to: '/watchlist', label: 'Watchlist', icon: '\u2605' },
+  { to: '/ops', label: 'Operations', icon: '\u2699' },
   { to: '/settings', label: 'Settings', icon: '\u2699' },
 ]
 
